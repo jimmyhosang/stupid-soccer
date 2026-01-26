@@ -2,130 +2,19 @@
 	import PlayerCard from '$lib/components/PlayerCard.svelte';
 	import ListForTradeModal from '$lib/components/ListForTradeModal.svelte';
 	import type { Player } from '$lib/types/database';
-	import { onMount } from 'svelte';
-	import { getCoins, formatCoins } from '$lib/stores/coins';
+	import { supabase } from '$lib/stores/auth.svelte';
 
-	// Demo players (will be merged with scouted players from localStorage)
-	const demoPlayers: Player[] = [
-		{
-			id: '1',
-			owner_id: 'demo',
-			name: 'Thunderfoot McSplash',
-			generation_prompt: 'A chaotic striker',
-			backstory: 'Once scored a goal so powerful it knocked out the goalkeeper.',
-			personality: ['chaotic', 'loud'],
-			celebration: 'Does a backflip but always lands on his face',
-			sprite_config: { hair: 'mohawk', skin: 'tan', face: 'determined', accessories: ['headband'] },
-			pace: 88,
-			shooting: 92,
-			passing: 45,
-			defense: 23,
-			stamina: 76,
-			rarity: 'legendary',
-			is_listed: false,
-			is_starter: true,
-			created_at: new Date().toISOString()
-		},
-		{
-			id: '2',
-			owner_id: 'demo',
-			name: "Whiskers O'Dribble",
-			generation_prompt: 'A mysterious winger',
-			backstory: 'Claims to have trained with actual cats.',
-			personality: ['mysterious', 'agile'],
-			celebration: 'Pretends to clean his face like a cat',
-			sprite_config: { hair: 'curly', skin: 'light', face: 'smirk', accessories: [] },
-			pace: 95,
-			shooting: 67,
-			passing: 78,
-			defense: 34,
-			stamina: 89,
-			rarity: 'rare',
-			is_listed: false,
-			is_starter: true,
-			created_at: new Date().toISOString()
-		},
-		{
-			id: '3',
-			owner_id: 'demo',
-			name: 'Brick Wallson',
-			generation_prompt: 'An immovable defender',
-			backstory: 'Was literally a brick wall in a past life.',
-			personality: ['stoic', 'immovable'],
-			celebration: 'Stands completely still for 30 seconds',
-			sprite_config: { hair: 'bald', skin: 'dark', face: 'stern', accessories: [] },
-			pace: 34,
-			shooting: 28,
-			passing: 56,
-			defense: 99,
-			stamina: 94,
-			rarity: 'rare',
-			is_listed: false,
-			is_starter: true,
-			created_at: new Date().toISOString()
-		},
-		{
-			id: '4',
-			owner_id: 'demo',
-			name: 'Noodle Arms McGee',
-			generation_prompt: 'A floppy goalkeeper',
-			backstory: 'Has the longest arms in football history. Nobody knows why.',
-			personality: ['flexible', 'unpredictable'],
-			celebration: 'Waves arms like noodles',
-			sprite_config: { hair: 'short', skin: 'pale', face: 'goofy', accessories: ['glasses'] },
-			pace: 45,
-			shooting: 12,
-			passing: 67,
-			defense: 78,
-			stamina: 82,
-			rarity: 'common',
-			is_listed: false,
-			is_starter: false,
-			created_at: new Date().toISOString()
-		},
-		{
-			id: '5',
-			owner_id: 'demo',
-			name: 'Captain Obvious',
-			generation_prompt: 'A midfielder who states the obvious',
-			backstory: 'Once announced "The ball is round" and the crowd went wild.',
-			personality: ['literal', 'helpful'],
-			celebration: 'Points at the scoreboard',
-			sprite_config: { hair: 'short', skin: 'medium', face: 'happy', accessories: ['bandana'] },
-			pace: 72,
-			shooting: 65,
-			passing: 88,
-			defense: 55,
-			stamina: 77,
-			rarity: 'common',
-			is_listed: false,
-			is_starter: false,
-			created_at: new Date().toISOString()
-		}
-	];
+	// Get data from server load function
+	let { data } = $props();
 
-	// Merge demo players with scouted players from localStorage
-	let myPlayers = $state<Player[]>([...demoPlayers]);
-	let coinBalance = $state(0);
+	// Reactive state from server data
+	let myPlayers = $state<Player[]>(data.players);
+	let coinBalance = $state(data.profile.coins);
 
-	onMount(() => {
-		// Load coin balance
-		coinBalance = getCoins();
-
-		// Load scouted players from localStorage
-		const stored = localStorage.getItem('stupidsoccer_players');
-		if (stored) {
-			try {
-				const scoutedPlayers: Player[] = JSON.parse(stored);
-				// Add scouted players that aren't already in the list
-				const existingIds = new Set(myPlayers.map(p => p.id));
-				const newPlayers = scoutedPlayers.filter(p => !existingIds.has(p.id));
-				myPlayers = [...myPlayers, ...newPlayers];
-			} catch (e) {
-				console.error('Failed to load scouted players:', e);
-			}
-		}
-	});
+	// Format coins for display
+	function formatCoins(amount: number): string {
+		return amount.toLocaleString();
+	}
 
 	let selectedPlayer = $state<Player | null>(null);
 	let activeTab = $state<'squad' | 'bench'>('squad');
@@ -139,9 +28,21 @@
 		selectedPlayer = selectedPlayer?.id === player.id ? null : player;
 	}
 
-	function toggleStarter(player: Player) {
+	async function toggleStarter(player: Player) {
 		if (player.is_starter) {
-			// Remove from starters
+			// Remove from starters - delete from squads table
+			const { error } = await supabase
+				.from('squads')
+				.delete()
+				.eq('player_id', player.id);
+
+			if (error) {
+				alert('Failed to remove from starters');
+				console.error(error);
+				return;
+			}
+
+			// Update local state
 			const playerIndex = myPlayers.findIndex((p) => p.id === player.id);
 			if (playerIndex !== -1) {
 				myPlayers[playerIndex] = { ...myPlayers[playerIndex], is_starter: false };
@@ -152,6 +53,29 @@
 				alert('You can only have 3 starters! Remove one first.');
 				return;
 			}
+
+			// Find next available position (1, 2, or 3)
+			const usedPositions = new Set(data.squad.map((s: { position: number }) => s.position));
+			let nextPosition = 1;
+			while (usedPositions.has(nextPosition) && nextPosition <= 3) {
+				nextPosition++;
+			}
+
+			const { error } = await supabase
+				.from('squads')
+				.insert({
+					user_id: data.profile.id,
+					player_id: player.id,
+					position: nextPosition
+				});
+
+			if (error) {
+				alert('Failed to add to starters');
+				console.error(error);
+				return;
+			}
+
+			// Update local state
 			const playerIndex = myPlayers.findIndex((p) => p.id === player.id);
 			if (playerIndex !== -1) {
 				myPlayers[playerIndex] = { ...myPlayers[playerIndex], is_starter: true };
@@ -178,8 +102,20 @@
 		showListModal = true;
 	}
 
-	function handleListPlayer(player: Player, price: number) {
-		// Mark player as listed (demo - would be Supabase in production)
+	async function handleListPlayer(player: Player, price: number) {
+		// Update player in Supabase to list for trade
+		const { error } = await supabase
+			.from('players')
+			.update({ is_listed: true, list_price: price })
+			.eq('id', player.id);
+
+		if (error) {
+			alert('Failed to list player for trade');
+			console.error(error);
+			return;
+		}
+
+		// Update local state
 		const playerIndex = myPlayers.findIndex((p) => p.id === player.id);
 		if (playerIndex !== -1) {
 			myPlayers[playerIndex] = { ...myPlayers[playerIndex], is_listed: true };
@@ -195,15 +131,15 @@
 	<title>My Squad - Stupid Soccer</title>
 </svelte:head>
 
-<main class="min-h-screen py-8 px-4">
-	<div class="max-w-6xl mx-auto">
+<main class="squad-page">
+	<div class="squad-container">
 		<!-- Header -->
-		<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+		<div class="squad-header">
 			<div>
-				<h1 class="font-pixel text-2xl text-text-primary">MY SQUAD</h1>
-				<p class="text-text-secondary mt-1">Manage your players and build the ultimate team</p>
+				<h1 class="squad-title">MY SQUAD</h1>
+				<p class="squad-subtitle">Manage your players and build the ultimate team</p>
 			</div>
-			<div class="flex gap-4">
+			<div class="header-actions">
 				<a href="/scout" class="btn btn-secondary">
 					+ Scout New Player
 				</a>
@@ -214,50 +150,44 @@
 		</div>
 
 		<!-- Team Stats -->
-		<div class="card card-static p-6 mb-8">
-			<div class="flex flex-wrap justify-between items-center gap-4">
-				<div>
-					<span class="text-text-muted text-sm">TEAM OVERALL</span>
-					<div class="font-pixel text-3xl text-primary">{getTeamOverall()}</div>
+		<div class="team-stats-card">
+			<div class="team-stats-grid">
+				<div class="stat-item">
+					<span class="stat-label">TEAM OVERALL</span>
+					<div class="stat-value stat-primary">{getTeamOverall()}</div>
 				</div>
-				<div>
-					<span class="text-text-muted text-sm">STARTERS</span>
-					<div class="font-pixel text-3xl {starters.length === 3 ? 'text-secondary' : 'text-accent'}">{starters.length}/3</div>
+				<div class="stat-item">
+					<span class="stat-label">STARTERS</span>
+					<div class="stat-value {starters.length === 3 ? 'stat-secondary' : 'stat-accent'}">{starters.length}/3</div>
 				</div>
-				<div>
-					<span class="text-text-muted text-sm">TOTAL PLAYERS</span>
-					<div class="font-pixel text-3xl text-text-primary">{myPlayers.length}</div>
+				<div class="stat-item">
+					<span class="stat-label">TOTAL PLAYERS</span>
+					<div class="stat-value">{myPlayers.length}</div>
 				</div>
-				<div>
-					<span class="text-text-muted text-sm">COINS</span>
-					<div class="font-pixel text-3xl text-accent">{formatCoins(coinBalance)}</div>
+				<div class="stat-item">
+					<span class="stat-label">COINS</span>
+					<div class="stat-value stat-accent">{formatCoins(coinBalance)}</div>
 				</div>
 			</div>
 		</div>
 
 		<!-- Tab Navigation -->
-		<div class="flex gap-2 mb-6">
+		<div class="tab-nav">
 			<button
 				onclick={() => activeTab = 'squad'}
-				class="px-6 py-3 rounded-lg font-pixel text-sm transition-all
-					{activeTab === 'squad'
-						? 'bg-primary text-white'
-						: 'bg-surface text-text-secondary hover:text-text-primary'}"
+				class="tab-btn {activeTab === 'squad' ? 'tab-active' : ''}"
 			>
 				STARTERS ({starters.length})
 			</button>
 			<button
 				onclick={() => activeTab = 'bench'}
-				class="px-6 py-3 rounded-lg font-pixel text-sm transition-all
-					{activeTab === 'bench'
-						? 'bg-primary text-white'
-						: 'bg-surface text-text-secondary hover:text-text-primary'}"
+				class="tab-btn {activeTab === 'bench' ? 'tab-active' : ''}"
 			>
 				BENCH ({bench.length})
 			</button>
 		</div>
 
-		<div class="grid lg:grid-cols-3 gap-8">
+		<div class="content-grid">
 			<!-- Players Grid -->
 			<div class="lg:col-span-2">
 				{#if activeTab === 'squad'}
@@ -409,8 +339,12 @@
 								>
 									{selectedPlayer.is_starter ? 'Remove from Starters' : 'Add to Starters'}
 								</button>
-								<button class="w-full btn btn-secondary">
-									List for Trade
+								<button
+									onclick={() => openListModal(selectedPlayer!)}
+									class="w-full btn btn-secondary"
+									disabled={selectedPlayer.is_listed}
+								>
+									{selectedPlayer.is_listed ? 'Already Listed' : 'List for Trade'}
 								</button>
 							</div>
 						</div>
@@ -432,3 +366,160 @@
 	onClose={() => { showListModal = false; playerToList = null; }}
 	onSubmit={handleListPlayer}
 />
+
+<style>
+	.squad-page {
+		min-height: 100vh;
+		padding: 2rem 1rem;
+	}
+
+	.squad-container {
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.squad-header {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		margin-bottom: 2rem;
+	}
+
+	@media (min-width: 768px) {
+		.squad-header {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+		}
+	}
+
+	.squad-title {
+		font-family: var(--font-pixel);
+		font-size: 1.5rem;
+		color: var(--color-text-primary);
+	}
+
+	.squad-subtitle {
+		color: var(--color-text-secondary);
+		margin-top: 0.25rem;
+	}
+
+	.header-actions {
+		display: flex;
+		gap: 1rem;
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.75rem 1.5rem;
+		border-radius: 0.5rem;
+		font-weight: 500;
+		transition: all 0.2s;
+		cursor: pointer;
+		text-decoration: none;
+		border: none;
+	}
+
+	.btn-primary {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.btn-primary:hover {
+		background-color: var(--color-primary-hover);
+	}
+
+	.btn-secondary {
+		background-color: var(--color-surface);
+		color: var(--color-text-primary);
+		border: 1px solid var(--color-border);
+	}
+
+	.btn-secondary:hover {
+		background-color: var(--color-surface-hover);
+	}
+
+	.team-stats-card {
+		background-color: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		padding: 1.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.team-stats-grid {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.stat-item {
+		text-align: center;
+	}
+
+	.stat-label {
+		color: var(--color-text-muted);
+		font-size: 0.875rem;
+		display: block;
+	}
+
+	.stat-value {
+		font-family: var(--font-pixel);
+		font-size: 1.875rem;
+		color: var(--color-text-primary);
+	}
+
+	.stat-primary {
+		color: var(--color-primary);
+	}
+
+	.stat-secondary {
+		color: var(--color-secondary);
+	}
+
+	.stat-accent {
+		color: var(--color-accent);
+	}
+
+	.tab-nav {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.tab-btn {
+		padding: 0.75rem 1.5rem;
+		border-radius: 0.5rem;
+		font-family: var(--font-pixel);
+		font-size: 0.875rem;
+		transition: all 0.2s;
+		cursor: pointer;
+		background-color: var(--color-surface);
+		color: var(--color-text-secondary);
+		border: none;
+	}
+
+	.tab-btn:hover {
+		color: var(--color-text-primary);
+	}
+
+	.tab-active {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.content-grid {
+		display: grid;
+		gap: 2rem;
+	}
+
+	@media (min-width: 1024px) {
+		.content-grid {
+			grid-template-columns: 2fr 1fr;
+		}
+	}
+</style>

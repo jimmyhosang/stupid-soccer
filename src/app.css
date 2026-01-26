@@ -1,0 +1,238 @@
+@import 'tailwindcss';
+
+/* =============================================
+   STUPID SOCCER - Design Tokens
+   Based on DESIGN.md specifications
+   ============================================= */
+
+@theme {
+  /* Colors - Playful vibe: bold, energetic, retro-inspired */
+  --color-primary: #7C3AED;
+  --color-primary-hover: #6D28D9;
+  --color-primary-active: #5B21B6;
+
+  --color-secondary: #10B981;
+  --color-accent: #F59E0B;
+
+  --color-background: #0F172A;
+  --color-surface: #1E293B;
+  --color-surface-hover: #334155;
+
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #64748B;
+
+  --color-border: #334155;
+  --color-border-focus: #7C3AED;
+
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+
+  /* Fonts */
+  --font-pixel: 'Press Start 2P', cursive;
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  /* Shadows */
+  --shadow-glow: 0 0 20px rgba(124, 58, 237, 0.3);
+  --shadow-glow-lg: 0 0 40px rgba(124, 58, 237, 0.4);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+
+  /* Animations */
+  --animate-float: float 3s ease-in-out infinite;
+  --animate-pulse-glow: pulse-glow 2s ease-in-out infinite;
+  --animate-bounce-slow: bounce 2s infinite;
+
+  /* Border Radius */
+  --radius-button: 8px;
+  --radius-card: 12px;
+  --radius-input: 8px;
+
+  /* Spacing (8pt grid) */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+  --spacing-4xl: 96px;
+}
+
+/* Keyframe Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(124, 58, 237, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(124, 58, 237, 0.6); }
+}
+
+/* Base Styles */
+html {
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--color-background);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Custom utility classes */
+.font-pixel {
+  font-family: var(--font-pixel);
+}
+
+.bg-surface {
+  background-color: var(--color-surface);
+}
+
+.bg-surface-hover:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+.shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+.shadow-glow-lg {
+  box-shadow: var(--shadow-glow-lg);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.animate-float {
+  animation: var(--animate-float);
+}
+
+.animate-pulse-glow {
+  animation: var(--animate-pulse-glow);
+}
+
+/* Button base styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  padding-left: 24px;
+  padding-right: 24px;
+  border-radius: var(--radius-button);
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  transform: scale(1.02);
+  box-shadow: var(--shadow-glow);
+}
+
+.btn-primary:active {
+  background-color: var(--color-primary-active);
+  transform: scale(0.98);
+}
+
+.btn-primary:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-primary);
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-surface);
+}
+
+/* Card base styles */
+.card {
+  background-color: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: var(--spacing-md);
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+/* Disable hover lift on non-interactive cards */
+.card-static:hover {
+  transform: none;
+  box-shadow: var(--shadow-card);
+}
+
+/* Color utilities for Tailwind v4 compatibility */
+.bg-background { background-color: var(--color-background); }
+.bg-surface { background-color: var(--color-surface); }
+.bg-primary { background-color: var(--color-primary); }
+.bg-primary\/20 { background-color: rgba(124, 58, 237, 0.2); }
+.bg-secondary\/20 { background-color: rgba(16, 185, 129, 0.2); }
+
+.text-text-primary { color: var(--color-text-primary); }
+.text-text-secondary { color: var(--color-text-secondary); }
+.text-text-muted { color: var(--color-text-muted); }
+.text-primary { color: var(--color-primary); }
+.text-secondary { color: var(--color-secondary); }
+.text-accent { color: var(--color-accent); }
+
+.border-border { border-color: var(--color-border); }
+.border-primary { border-color: var(--color-primary); }
+.border-primary\/50 { border-color: rgba(124, 58, 237, 0.5); }
+
+/* Input base styles */
+.input {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--color-text-primary);
+  transition: all 0.2s ease;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-glow);
+  background-color: var(--color-surface-hover);
+}

@@ -28,7 +28,7 @@ export class MainScene extends Phaser.Scene {
 	private playerTeam: PlayerSprite[] = [];
 	private aiTeam: PlayerSprite[] = [];
 	private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-	private spaceKey!: Phaser.Input.Keyboard.Key;
+	private kickKey!: Phaser.Input.Keyboard.Key;
 	private selectedPlayer: PlayerSprite | null = null;
 	private playerScore = 0;
 	private aiScore = 0;
@@ -40,12 +40,18 @@ export class MainScene extends Phaser.Scene {
 	private ballCarrier: PlayerSprite | null = null;
 	private dribbleOffset = 20;
 	private facingAngle = Math.PI; // Default facing left towards goal
+	private dribbleAngle = Math.PI; // Separate angle for ball position (smoothed)
 	private passIndicator!: Phaser.GameObjects.Graphics;
 	private selectionIndicator!: Phaser.GameObjects.Ellipse;
 	private lastAutoSwitch = 0; // Cooldown for auto-switch
 	private isPaused = false; // For goal celebration pause
 	private isHalftime = false;
 	private halftimeShown = false;
+	private lastKickTime = 0; // Cooldown for kicking
+	private goalJustScored = false; // Prevent double goal detection
+	private possessionStartTime = 0; // When player gained possession (for first touch delay)
+	private kickTintActive = false; // Prevent possession tint from overriding kick feedback
+	private kickerCooldown: PlayerSprite | null = null; // Player who just kicked (can't immediately repossess)
 
 	// Stats tracking
 	private stats = {
@@ -132,10 +138,10 @@ export class MainScene extends Phaser.Scene {
 		// Setup input
 		if (this.input.keyboard) {
 			this.cursors = this.input.keyboard.createCursorKeys();
-			this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+			this.kickKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
 
-			// S to switch players manually
-			this.input.keyboard.on('keydown-S', () => {
+			// A to switch players manually
+			this.input.keyboard.on('keydown-A', () => {
 				const currentIndex = this.playerTeam.indexOf(this.selectedPlayer!);
 				const nextIndex = (currentIndex + 1) % this.playerTeam.length;
 				this.selectedPlayer = this.playerTeam[nextIndex];
@@ -233,11 +239,58 @@ export class MainScene extends Phaser.Scene {
 
 		this.ball = this.physics.add.sprite(width / 2, height / 2, 'ball');
 		this.ball.setCircle(12);
-		this.ball.setBounce(0.8);
-		this.ball.setDrag(150);
-		this.ball.setMaxVelocity(400);
-		this.ball.setCollideWorldBounds(true);
+		this.ball.setBounce(1.9); // Super bouncy! (twice as bouncy as before)
+		this.ball.setDrag(150); // Less drag for faster movement
+		this.ball.setMaxVelocity(400); // Faster max speed
 		this.ball.setDepth(10); // Ball above shadow
+
+		// Create pitch boundary walls (allows ball into goal areas but not off pitch)
+		this.createPitchWalls(width, height);
+	}
+
+	private createPitchWalls(width: number, height: number) {
+		const margin = 20;
+		const goalHeight = 100;
+		const goalY = (height - goalHeight) / 2;
+		const wallThickness = 10;
+
+		// Create static physics group for walls
+		const walls = this.physics.add.staticGroup();
+
+		// Top wall (full width)
+		const topWall = this.add.rectangle(width / 2, margin - wallThickness / 2, width, wallThickness, 0x000000, 0);
+		walls.add(topWall);
+
+		// Bottom wall (full width)
+		const bottomWall = this.add.rectangle(width / 2, height - margin + wallThickness / 2, width, wallThickness, 0x000000, 0);
+		walls.add(bottomWall);
+
+		// Left wall - TOP section (above goal)
+		const leftTopWall = this.add.rectangle(margin - wallThickness / 2, goalY / 2, wallThickness, goalY, 0x000000, 0);
+		walls.add(leftTopWall);
+
+		// Left wall - BOTTOM section (below goal)
+		const leftBottomWall = this.add.rectangle(margin - wallThickness / 2, goalY + goalHeight + (height - goalY - goalHeight) / 2, wallThickness, height - goalY - goalHeight, 0x000000, 0);
+		walls.add(leftBottomWall);
+
+		// Left BACK wall (behind goal)
+		const leftBackWall = this.add.rectangle(-wallThickness / 2, height / 2, wallThickness, goalHeight, 0x000000, 0);
+		walls.add(leftBackWall);
+
+		// Right wall - TOP section (above goal)
+		const rightTopWall = this.add.rectangle(width - margin + wallThickness / 2, goalY / 2, wallThickness, goalY, 0x000000, 0);
+		walls.add(rightTopWall);
+
+		// Right wall - BOTTOM section (below goal)
+		const rightBottomWall = this.add.rectangle(width - margin + wallThickness / 2, goalY + goalHeight + (height - goalY - goalHeight) / 2, wallThickness, height - goalY - goalHeight, 0x000000, 0);
+		walls.add(rightBottomWall);
+
+		// Right BACK wall (behind goal)
+		const rightBackWall = this.add.rectangle(width + wallThickness / 2, height / 2, wallThickness, goalHeight, 0x000000, 0);
+		walls.add(rightBackWall);
+
+		// Ball collides with walls and bounces
+		this.physics.add.collider(this.ball, walls);
 	}
 
 	private createPlayers(width: number, height: number) {
@@ -245,7 +298,7 @@ export class MainScene extends Phaser.Scene {
 		generateTeamSprites(this, 'player', PLAYER_COLOR, 3);
 		generateTeamSprites(this, 'ai', AI_COLOR, 3);
 
-		// Player team positions (right side, defending right goal)
+		// Player team positions (right side, defending right goal) - 3v3
 		const playerPositions = [
 			{ x: width * 0.75, y: height * 0.3 },
 			{ x: width * 0.75, y: height * 0.7 },
@@ -293,9 +346,24 @@ export class MainScene extends Phaser.Scene {
 	private setupCollisions() {
 		// Ball collisions with players - handles possession
 		this.physics.add.overlap(this.ball, this.playerTeam, (ball, player) => {
+			// Don't let the kicker immediately repossess
+			if (player === this.kickerCooldown) return;
+
 			if (!this.ballCarrier) {
 				this.ballCarrier = player as PlayerSprite;
 				this.lastKicker = 'player';
+				this.possessionStartTime = this.time.now;
+
+				// Initialize dribble angle based on ball direction or default to facing goal
+				const ballVx = this.ball.body?.velocity.x || 0;
+				const ballVy = this.ball.body?.velocity.y || 0;
+				if (Math.abs(ballVx) > 50 || Math.abs(ballVy) > 50) {
+					// Ball was moving - face the direction ball came from
+					this.dribbleAngle = Math.atan2(ballVy, ballVx);
+				} else {
+					// Ball was slow - face the goal
+					this.dribbleAngle = Math.PI;
+				}
 
 				// Auto-switch to player who got the ball
 				if (player !== this.selectedPlayer) {
@@ -309,8 +377,12 @@ export class MainScene extends Phaser.Scene {
 			if (!this.ballCarrier) {
 				this.ballCarrier = player as PlayerSprite;
 				this.lastKicker = 'ai';
+				this.possessionStartTime = this.time.now;
 			} else if (this.ballCarrier.isAI === false) {
-				// AI tackle - 20% chance
+				// AI tackle - 20% chance, but not during player's first touch
+				const isFirstTouch = this.time.now - this.possessionStartTime < 200;
+				if (isFirstTouch) return; // Protected during first touch
+
 				const dist = Phaser.Math.Distance.Between(
 					(player as PlayerSprite).x,
 					(player as PlayerSprite).y,
@@ -320,6 +392,7 @@ export class MainScene extends Phaser.Scene {
 				if (dist < 20 && Math.random() < 0.2) {
 					this.ballCarrier = player as PlayerSprite;
 					this.lastKicker = 'ai';
+					this.possessionStartTime = this.time.now;
 				}
 			}
 		});
@@ -329,7 +402,27 @@ export class MainScene extends Phaser.Scene {
 		this.physics.add.collider(this.aiTeam, this.aiTeam);
 		this.physics.add.collider(this.playerTeam, this.aiTeam, (p1, p2) => {
 			if (this.ballCarrier === p1 || this.ballCarrier === p2) {
-				if (Math.random() < 0.3) {
+				// Protected during first touch
+				if (this.time.now - this.possessionStartTime < 200) return;
+
+				// Lower base chance, affected by speed differential
+				const carrier = this.ballCarrier;
+				const tackler = carrier === p1 ? p2 : p1;
+				const carrierSpeed = Math.sqrt(
+					(carrier?.body?.velocity.x || 0) ** 2 +
+					(carrier?.body?.velocity.y || 0) ** 2
+				);
+				const tacklerSprite = tackler as PlayerSprite;
+				const tacklerSpeed = Math.sqrt(
+					(tacklerSprite.body?.velocity.x || 0) ** 2 +
+					(tacklerSprite.body?.velocity.y || 0) ** 2
+				);
+
+				// Higher chance if tackler is moving faster than carrier
+				const speedRatio = tacklerSpeed / Math.max(carrierSpeed, 50);
+				const tackleChance = 0.1 + speedRatio * 0.1; // 10-20% base
+
+				if (Math.random() < tackleChance) {
 					this.ballCarrier = null;
 				}
 			}
@@ -339,23 +432,14 @@ export class MainScene extends Phaser.Scene {
 	private createUI(width: number) {
 		const { height } = this.scale;
 
-		this.scoreText = this.add.text(width / 2, 10, '0 - 0', {
-			fontFamily: '"Press Start 2P"',
-			fontSize: '16px',
-			color: '#ffffff'
-		}).setOrigin(0.5, 0);
+		// Score/timer UI is handled by Svelte component - keep internal references for tracking
+		this.scoreText = this.add.text(0, 0, '0 - 0', {
+			fontSize: '1px'
+		}).setVisible(false);
 
-		this.timerText = this.add.text(width / 2, 35, '3:00', {
-			fontFamily: 'Inter',
-			fontSize: '14px',
-			color: '#94a3b8'
-		}).setOrigin(0.5, 0);
-
-		this.add.text(10, 10, 'Arrows: Move | Space: Pass/Shoot | S: Switch', {
-			fontFamily: 'Inter',
-			fontSize: '10px',
-			color: '#64748b'
-		});
+		this.timerText = this.add.text(0, 0, '3:00', {
+			fontSize: '1px'
+		}).setVisible(false);
 
 		// Goal celebration text (hidden by default)
 		this.goalText = this.add.text(width / 2, height / 2, 'GOAL!', {
@@ -423,27 +507,33 @@ export class MainScene extends Phaser.Scene {
 
 	private getPassTarget(): PlayerSprite | null {
 		if (!this.selectedPlayer) return null;
+		if (this.ballCarrier !== this.selectedPlayer) return null;
 
-		const player = this.selectedPlayer;
+		const ball = this.ball;
 		let bestTarget: PlayerSprite | null = null;
 		let bestScore = -Infinity;
 
 		this.playerTeam.forEach((teammate) => {
-			if (teammate === player) return;
+			if (teammate === this.selectedPlayer) return;
 
-			const dist = Phaser.Math.Distance.Between(player.x, player.y, teammate.x, teammate.y);
+			// Calculate distance FROM BALL to teammate
+			const dist = Phaser.Math.Distance.Between(ball.x, ball.y, teammate.x, teammate.y);
 			if (dist < 40 || dist > 400) return;
 
-			const angleToTeammate = Phaser.Math.Angle.Between(player.x, player.y, teammate.x, teammate.y);
+			// Angle from ball to teammate
+			const angleToTeammate = Phaser.Math.Angle.Between(ball.x, ball.y, teammate.x, teammate.y);
 			let angleDiff = Math.abs(angleToTeammate - this.facingAngle);
 			if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
 
 			// Consider teammates within 90 degrees of facing direction
 			if (angleDiff > Math.PI / 2) return;
 
+			// Bonus for teammates towards the goal (lower x)
+			const forwardBonus = (this.selectedPlayer!.x - teammate.x) * 0.5;
+
 			const angleScore = (Math.PI / 2 - angleDiff) * 200;
 			const distScore = -dist * 0.3;
-			const score = angleScore + distScore;
+			const score = angleScore + distScore + Math.max(0, forwardBonus);
 
 			if (score > bestScore) {
 				bestScore = score;
@@ -459,30 +549,50 @@ export class MainScene extends Phaser.Scene {
 
 		if (!this.selectedPlayer || this.ballCarrier !== this.selectedPlayer) return;
 
-		const player = this.selectedPlayer;
+		const ball = this.ball;
 		const target = this.getPassTarget();
 
 		if (target) {
-			// Draw line to pass target
+			// Draw line from BALL to pass target (this is where the pass goes)
 			this.passIndicator.lineStyle(2, 0x00ff00, 0.5);
-			this.passIndicator.lineBetween(player.x, player.y, target.x, target.y);
+			this.passIndicator.lineBetween(ball.x, ball.y, target.x, target.y);
 
 			// Draw circle around target
 			this.passIndicator.lineStyle(2, 0x00ff00, 0.8);
 			this.passIndicator.strokeCircle(target.x, target.y, 18);
 		} else {
-			// Draw kick direction indicator
-			const indicatorLength = 50;
-			const endX = player.x + Math.cos(this.facingAngle) * indicatorLength;
-			const endY = player.y + Math.sin(this.facingAngle) * indicatorLength;
+			// Draw kick direction indicator FROM THE BALL (not player)
+			// This shows where the shot will go
+			const indicatorLength = 60;
+			const endX = ball.x + Math.cos(this.facingAngle) * indicatorLength;
+			const endY = ball.y + Math.sin(this.facingAngle) * indicatorLength;
 
-			this.passIndicator.lineStyle(2, 0xffff00, 0.5);
-			this.passIndicator.lineBetween(player.x, player.y, endX, endY);
+			// Yellow line = shooting direction
+			this.passIndicator.lineStyle(3, 0xffff00, 0.6);
+			this.passIndicator.lineBetween(ball.x, ball.y, endX, endY);
+
+			// Draw small arrowhead
+			const arrowSize = 8;
+			const arrowAngle1 = this.facingAngle + Math.PI * 0.8;
+			const arrowAngle2 = this.facingAngle - Math.PI * 0.8;
+			this.passIndicator.lineBetween(
+				endX, endY,
+				endX + Math.cos(arrowAngle1) * arrowSize,
+				endY + Math.sin(arrowAngle1) * arrowSize
+			);
+			this.passIndicator.lineBetween(
+				endX, endY,
+				endX + Math.cos(arrowAngle2) * arrowSize,
+				endY + Math.sin(arrowAngle2) * arrowSize
+			);
 		}
 	}
 
 	private kickBall() {
 		if (!this.selectedPlayer) return;
+
+		// Kick cooldown (300ms)
+		if (this.time.now - this.lastKickTime < 300) return;
 
 		const player = this.selectedPlayer;
 		const ball = this.ball;
@@ -490,24 +600,75 @@ export class MainScene extends Phaser.Scene {
 		const hasBall = this.ballCarrier === player;
 		const distance = Phaser.Math.Distance.Between(player.x, player.y, ball.x, ball.y);
 
+		// First touch delay - can't kick immediately after receiving ball (150ms)
+		if (hasBall && this.time.now - this.possessionStartTime < 150) return;
+
+		// TACKLE: If AI has the ball and we're close, attempt to steal
+		if (!hasBall && this.ballCarrier?.isAI && distance < 50) {
+			this.lastKickTime = this.time.now;
+			// 50% tackle success rate
+			if (Math.random() < 0.5) {
+				// Successful tackle!
+				this.ballCarrier = player;
+				this.lastKicker = 'player';
+				// Reset dribble angle to face the AI goal
+				this.dribbleAngle = Math.PI;
+				// Visual feedback
+				this.cameras.main.shake(100, 0.005);
+				player.setTint(0x00ff00);
+				this.time.delayedCall(150, () => player.clearTint());
+			} else {
+				// Failed tackle - ball knocked loose
+				this.ballCarrier = null;
+				const knockAngle = Math.random() * Math.PI * 2;
+				ball.setVelocity(Math.cos(knockAngle) * 150, Math.sin(knockAngle) * 150);
+			}
+			return;
+		}
+
 		if (!hasBall && distance > 40) return;
+
+		this.lastKickTime = this.time.now;
+
+		// Store ball position BEFORE releasing possession
+		const ballX = ball.x;
+		const ballY = ball.y;
 
 		this.ballCarrier = null;
 
 		const target = this.getPassTarget();
-		const kickPower = 300;
+		const baseKickPower = 280;
+
+		// Calculate momentum bonus for shots
+		// If running in same direction as kick, add power
+		const playerVx = player.body?.velocity.x || 0;
+		const playerVy = player.body?.velocity.y || 0;
+		const playerSpeed = Math.sqrt(playerVx * playerVx + playerVy * playerVy);
 
 		if (target) {
-			// Pass to teammate
-			const passAngle = Phaser.Math.Angle.Between(player.x, player.y, target.x, target.y);
-			ball.setVelocity(Math.cos(passAngle) * kickPower, Math.sin(passAngle) * kickPower);
+			// Pass to teammate - kick FROM the ball's current position TO the target
+			const passAngle = Phaser.Math.Angle.Between(ballX, ballY, target.x, target.y);
+			const variance = (Math.random() - 0.5) * 0.15; // +/- 4 degrees
+			// Passes get slight momentum bonus
+			const passPower = baseKickPower + playerSpeed * 0.1;
+			ball.setVelocity(
+				Math.cos(passAngle + variance) * passPower,
+				Math.sin(passAngle + variance) * passPower
+			);
 			this.stats.playerPasses++;
 			playPassSound();
 		} else {
-			// Shot or clearance - count as shot if aiming towards goal
-			ball.setVelocity(Math.cos(this.facingAngle) * kickPower, Math.sin(this.facingAngle) * kickPower);
-			// Check if shooting towards AI goal (left side, x < 0.3 width)
-			if (Math.cos(this.facingAngle) < -0.3) {
+			// Shot - use facing angle (where player is AIMING)
+			// Add momentum bonus if running in shot direction
+			const kickDirX = Math.cos(this.facingAngle);
+			const kickDirY = Math.sin(this.facingAngle);
+			const momentumAlignment = (playerVx * kickDirX + playerVy * kickDirY) / Math.max(playerSpeed, 1);
+			const momentumBonus = Math.max(0, momentumAlignment) * playerSpeed * 0.3;
+			const shotPower = baseKickPower + momentumBonus;
+
+			ball.setVelocity(kickDirX * shotPower, kickDirY * shotPower);
+			// Check if shooting towards AI goal (left side)
+			if (kickDirX < -0.3) {
 				this.stats.playerShots++;
 			}
 			playKickSound();
@@ -515,6 +676,7 @@ export class MainScene extends Phaser.Scene {
 		this.lastKicker = 'player';
 
 		// Kick feedback: brief flash and scale
+		this.kickTintActive = true;
 		this.tweens.add({
 			targets: ball,
 			scaleX: 1.3,
@@ -524,7 +686,16 @@ export class MainScene extends Phaser.Scene {
 			ease: 'Quad.out'
 		});
 		ball.setTint(0xffff00);
-		this.time.delayedCall(100, () => ball.clearTint());
+		this.time.delayedCall(150, () => {
+			this.kickTintActive = false;
+			ball.clearTint();
+		});
+
+		// Prevent kicker from immediately repossessing
+		this.kickerCooldown = player;
+		this.time.delayedCall(300, () => {
+			this.kickerCooldown = null;
+		});
 	}
 
 	private autoSwitchToNearest() {
@@ -552,7 +723,16 @@ export class MainScene extends Phaser.Scene {
 	}
 
 	private updateTimer() {
+		// Don't count down during pauses (goal celebrations, halftime)
+		if (this.isPaused) return;
+
 		this.gameTime--;
+
+		// Notify Svelte UI of time update
+		const onTimeUpdate = this.registry.get('onTimeUpdate');
+		if (onTimeUpdate) {
+			onTimeUpdate(this.gameTime);
+		}
 
 		if (this.gameTime <= 0) {
 			this.showFulltime();
@@ -564,10 +744,6 @@ export class MainScene extends Phaser.Scene {
 			this.showHalftime();
 			return;
 		}
-
-		const minutes = Math.floor(this.gameTime / 60);
-		const seconds = this.gameTime % 60;
-		this.timerText.setText(`${minutes}:${seconds.toString().padStart(2, '0')}`);
 	}
 
 	private calculatePossession(): { player: number; ai: number } {
@@ -675,6 +851,9 @@ export class MainScene extends Phaser.Scene {
 	}
 
 	private checkGoals() {
+		// Prevent double goal detection
+		if (this.goalJustScored) return;
+
 		const { width, height } = this.scale;
 		const ball = this.ball;
 		const margin = 20;
@@ -682,11 +861,13 @@ export class MainScene extends Phaser.Scene {
 		const goalY = (height - goalHeight) / 2;
 
 		if (ball.x < margin && ball.y > goalY && ball.y < goalY + goalHeight) {
+			this.goalJustScored = true;
 			this.playerScore++;
 			this.onGoalScored('player');
 		}
 
 		if (ball.x > width - margin && ball.y > goalY && ball.y < goalY + goalHeight) {
+			this.goalJustScored = true;
 			this.aiScore++;
 			this.onGoalScored('ai');
 		}
@@ -738,6 +919,7 @@ export class MainScene extends Phaser.Scene {
 		this.ballCarrier = null;
 		this.time.delayedCall(1500, () => {
 			this.isPaused = false;
+			this.goalJustScored = false; // Allow goal detection again
 			this.resetPositions();
 		});
 	}
@@ -748,6 +930,7 @@ export class MainScene extends Phaser.Scene {
 		this.ball.setPosition(width / 2, height / 2);
 		this.ball.setVelocity(0, 0);
 
+		// 3v3 formation positions
 		const playerPositions = [
 			{ x: width * 0.75, y: height * 0.3 },
 			{ x: width * 0.75, y: height * 0.7 },
@@ -783,36 +966,49 @@ export class MainScene extends Phaser.Scene {
 	private updateBallPosition() {
 		if (this.ballCarrier) {
 			const carrier = this.ballCarrier;
-			let offsetX: number;
-			let offsetY: number;
+			let targetAngle: number;
+
+			// Calculate carrier speed
+			const vx = carrier.body?.velocity.x || 0;
+			const vy = carrier.body?.velocity.y || 0;
+			const speed = Math.sqrt(vx * vx + vy * vy);
 
 			if (carrier === this.selectedPlayer) {
-				offsetX = Math.cos(this.facingAngle) * this.dribbleOffset;
-				offsetY = Math.sin(this.facingAngle) * this.dribbleOffset;
-			} else if (carrier.isAI) {
-				const vx = carrier.body?.velocity.x || 0;
-				const vy = carrier.body?.velocity.y || 0;
-				if (Math.abs(vx) > 10 || Math.abs(vy) > 10) {
-					const angle = Math.atan2(vy, vx);
-					offsetX = Math.cos(angle) * this.dribbleOffset;
-					offsetY = Math.sin(angle) * this.dribbleOffset;
+				// For selected player, use the dribble angle (based on movement)
+				// but smoothly interpolate to avoid jarring jumps
+
+				if (speed > 20) {
+					// Moving - update dribble angle based on movement direction
+					targetAngle = Math.atan2(vy, vx);
 				} else {
-					offsetX = this.dribbleOffset;
-					offsetY = 0;
+					// Standing still - keep current dribble angle
+					targetAngle = this.dribbleAngle;
+				}
+
+				// Smoothly interpolate dribble angle (prevents jarring ball position changes)
+				let angleDiff = targetAngle - this.dribbleAngle;
+				// Normalize angle difference to [-PI, PI]
+				while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+				while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+				this.dribbleAngle += angleDiff * 0.2; // Smooth but responsive
+
+			} else if (carrier.isAI) {
+				if (speed > 10) {
+					this.dribbleAngle = Math.atan2(vy, vx);
 				}
 			} else {
-				const vx = carrier.body?.velocity.x || 0;
-				const vy = carrier.body?.velocity.y || 0;
-				if (Math.abs(vx) > 10 || Math.abs(vy) > 10) {
-					const angle = Math.atan2(vy, vx);
-					offsetX = Math.cos(angle) * this.dribbleOffset;
-					offsetY = Math.sin(angle) * this.dribbleOffset;
-				} else {
-					offsetX = -this.dribbleOffset;
-					offsetY = 0;
+				// Teammate with ball
+				if (speed > 10) {
+					this.dribbleAngle = Math.atan2(vy, vx);
 				}
 			}
 
+			// Dynamic dribble offset: closer when slow, farther when fast
+			// Range from 15 (standing) to 25 (full speed)
+			const dynamicOffset = 15 + (speed / this.MAX_SPEED) * 10;
+
+			const offsetX = Math.cos(this.dribbleAngle) * dynamicOffset;
+			const offsetY = Math.sin(this.dribbleAngle) * dynamicOffset;
 			this.ball.setPosition(carrier.x + offsetX, carrier.y + offsetY);
 			this.ball.setVelocity(0, 0);
 		}
@@ -846,9 +1042,10 @@ export class MainScene extends Phaser.Scene {
 					if (teammate) {
 						this.ballCarrier = null;
 						const passAngle = Phaser.Math.Angle.Between(ai.x, ai.y, teammate.x, teammate.y);
-						ball.setVelocity(Math.cos(passAngle) * 250, Math.sin(passAngle) * 250);
+						ball.setVelocity(Math.cos(passAngle) * 280, Math.sin(passAngle) * 280);
 						this.lastKicker = 'ai';
-						playKickSound();
+						this.stats.aiPasses++;
+						playPassSound();
 					}
 				}
 				return;
@@ -925,8 +1122,12 @@ export class MainScene extends Phaser.Scene {
 				// Make attacking runs when teammate has ball
 				const teammateHasBall = this.ballCarrier && this.ballCarrier.isAI;
 				if (teammateHasBall) {
-					const runX = Math.min(ball.x + 100, width * 0.7);
-					const runY = index === 0 ? height * 0.3 : height * 0.7;
+					// Dynamic runs - alternate between wide and central
+					const runX = Math.min(ball.x + 100 + Math.random() * 50, width * 0.75);
+					// Add variance to Y position based on time
+					const yVariance = Math.sin(this.time.now / 1000 + index * Math.PI) * height * 0.1;
+					const baseY = index === 0 ? height * 0.3 : height * 0.7;
+					const runY = Phaser.Math.Clamp(baseY + yVariance, height * 0.15, height * 0.85);
 					const angle = Phaser.Math.Angle.Between(ai.x, ai.y, runX, runY);
 					ai.setVelocity(Math.cos(angle) * this.aiSpeed * 0.7, Math.sin(angle) * this.aiSpeed * 0.7);
 				} else {
@@ -965,7 +1166,8 @@ export class MainScene extends Phaser.Scene {
 					if (teammate === player) return;
 
 					const dist = Phaser.Math.Distance.Between(player.x, player.y, teammate.x, teammate.y);
-					const aheadBonus = player.x - teammate.x;
+					// Bonus for teammates closer to AI goal (left side, lower x)
+					const aheadBonus = teammate.x - player.x < 0 ? (player.x - teammate.x) : 0;
 					const score = aheadBonus - dist * 0.3;
 
 					if (dist > 50 && dist < 300 && score > bestScore) {
@@ -980,22 +1182,27 @@ export class MainScene extends Phaser.Scene {
 					const passAngle = Phaser.Math.Angle.Between(player.x, player.y, target.x, target.y);
 					this.ball.setVelocity(Math.cos(passAngle) * 250, Math.sin(passAngle) * 250);
 					this.lastKicker = 'player';
+					this.stats.playerPasses++;
 					playPassSound();
 				} else {
+					// Shoot towards AI goal (left side, x = 20)
 					this.ballCarrier = null;
 					const kickAngle = Phaser.Math.Angle.Between(player.x, player.y, 20, height / 2);
 					this.ball.setVelocity(Math.cos(kickAngle) * 280, Math.sin(kickAngle) * 280);
 					this.lastKicker = 'player';
+					this.stats.playerShots++;
 					playKickSound();
 				}
 				return;
 			}
 
+			// Goalkeeper (index 2) - stays deep to guard goal
 			if (index === 2) {
-				const defenseX = width * 0.75;
+				const defenseX = width * 0.82; // Stay very close to goal
 				let targetY = height / 2;
 
-				if (!teamHasBall) {
+				// Track ball vertically when defending
+				if (!teamHasBall || ball.x > width * 0.6) {
 					targetY = Phaser.Math.Clamp(ball.y, height * 0.3, height * 0.7);
 				}
 
@@ -1014,15 +1221,18 @@ export class MainScene extends Phaser.Scene {
 				let targetY: number;
 
 				if (selectedPlayerHasBall && this.selectedPlayer) {
-					targetX = Math.max(this.selectedPlayer.x - 120, width * 0.2);
+					// Make attacking runs ahead of ball carrier (towards AI goal on left)
+					targetX = Math.max(this.selectedPlayer.x - 100, width * 0.15);
 					targetY = index === 0 ? height * 0.25 : height * 0.75;
 
+					// If we're already in attacking third, spread wide
 					if (this.selectedPlayer.x < width * 0.4) {
-						targetX = width * 0.2;
-						targetY = index === 0 ? height * 0.35 : height * 0.65;
+						targetX = width * 0.25;
+						targetY = index === 0 ? height * 0.2 : height * 0.8;
 					}
 				} else {
-					targetX = Math.min(ball.x + 80, width * 0.6);
+					// Support play - move forward with ball
+					targetX = Math.max(ball.x - 80, width * 0.2);
 					targetY = index === 0 ? height * 0.3 : height * 0.7;
 				}
 
@@ -1037,13 +1247,16 @@ export class MainScene extends Phaser.Scene {
 				const distToBall = Phaser.Math.Distance.Between(player.x, player.y, ball.x, ball.y);
 
 				if (!this.ballCarrier && distToBall < 150) {
+					// Chase loose ball
 					const angle = Phaser.Math.Angle.Between(player.x, player.y, ball.x, ball.y);
 					player.setVelocity(Math.cos(angle) * player.speed, Math.sin(angle) * player.speed);
-				} else if (this.ballCarrier?.isAI && ball.x > width * 0.4) {
+				} else if (this.ballCarrier?.isAI && ball.x > width * 0.5) {
+					// Defend - chase AI with ball in our half
 					const angle = Phaser.Math.Angle.Between(player.x, player.y, ball.x, ball.y);
 					player.setVelocity(Math.cos(angle) * player.speed * 0.8, Math.sin(angle) * player.speed * 0.8);
 				} else {
-					const homeX = width * 0.6;
+					// Return to defensive positions
+					const homeX = width * 0.65;
 					const homeY = index === 0 ? height * 0.35 : height * 0.65;
 					const distToHome = Phaser.Math.Distance.Between(player.x, player.y, homeX, homeY);
 
@@ -1061,6 +1274,20 @@ export class MainScene extends Phaser.Scene {
 	update() {
 		// Update ball shadow position always
 		this.ballShadow.setPosition(this.ball.x, this.ball.y + 10);
+
+		// Ball possession indicator (tint ball based on who has it)
+		// But don't override kick feedback tint
+		if (!this.kickTintActive) {
+			if (this.ballCarrier) {
+				if (this.ballCarrier.isAI) {
+					this.ball.setTint(0xffcccc); // Light red tint for AI
+				} else {
+					this.ball.setTint(0xccccff); // Light violet tint for player
+				}
+			} else {
+				this.ball.clearTint(); // White ball when loose
+			}
+		}
 
 		// Skip game logic if paused (goal celebration)
 		if (this.isPaused) return;
@@ -1099,15 +1326,16 @@ export class MainScene extends Phaser.Scene {
 			if (this.touchInput.up) ay = -this.ACCELERATION;
 			else if (this.touchInput.down) ay = this.ACCELERATION;
 
-			// Update facing direction based on input (even while kicking)
+			// Update SHOOTING direction based on input direction
+			// This is INSTANT - player can aim while running or standing
 			if (ax !== 0 || ay !== 0) {
 				this.facingAngle = Math.atan2(ay, ax);
 			}
 
 			this.selectedPlayer.setAcceleration(ax, ay);
 
-			// Check for kick - keyboard
-			if (this.spaceKey && Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+			// Check for kick - keyboard (S key)
+			if (this.kickKey && Phaser.Input.Keyboard.JustDown(this.kickKey)) {
 				this.kickBall();
 			}
 
@@ -1150,5 +1378,32 @@ export class MainScene extends Phaser.Scene {
 
 		// Check goals
 		this.checkGoals();
+
+		// Check out of bounds (past goal line but not in goal)
+		this.checkOutOfBounds();
+	}
+
+	private checkOutOfBounds() {
+		const { width, height } = this.scale;
+		const ball = this.ball;
+		const margin = 20;
+		const goalHeight = 100;
+		const goalY = (height - goalHeight) / 2;
+
+		// Ball past left end line but not in goal
+		if (ball.x < margin - 5 && (ball.y < goalY || ball.y > goalY + goalHeight)) {
+			// Goal kick for player team
+			this.ballCarrier = null;
+			ball.setPosition(margin + 50, ball.y < height / 2 ? height * 0.3 : height * 0.7);
+			ball.setVelocity(0, 0);
+		}
+
+		// Ball past right end line but not in goal
+		if (ball.x > width - margin + 5 && (ball.y < goalY || ball.y > goalY + goalHeight)) {
+			// Goal kick for AI team
+			this.ballCarrier = null;
+			ball.setPosition(width - margin - 50, ball.y < height / 2 ? height * 0.3 : height * 0.7);
+			ball.setVelocity(0, 0);
+		}
 	}
 }

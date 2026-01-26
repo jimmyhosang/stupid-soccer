@@ -1,0 +1,10 @@
+# Stupid Soccer - robots.txt
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://stupidsoccer.com/sitemap.xml
+
+# Block API routes from indexing
+Disallow: /api/
+Disallow: /auth/

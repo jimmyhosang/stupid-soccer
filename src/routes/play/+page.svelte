@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { getCoins, addCoins, calculateMatchReward, formatCoins, COIN_REWARDS } from '$lib/stores/coins';
 	import { playCoinSound, resumeAudio } from '$lib/game/audio/SoundEffects';
+	import { supabase } from '$lib/stores/auth.svelte';
 	import TouchControls from '$lib/components/TouchControls.svelte';
 
 	type GameModule = typeof import('$lib/game');
@@ -14,6 +15,7 @@
 
 	let playerScore = $state(0);
 	let aiScore = $state(0);
+	let gameTime = $state(180); // 3 minutes
 	let gameStarted = $state(false);
 	let gameEnded = $state(false);
 	let difficulty = $state<'easy' | 'medium' | 'hard'>('easy');
@@ -22,6 +24,14 @@
 	let coinsEarned = $state(0);
 	let coinsAwarded = $state(false);
 	let isMobile = $state(false);
+	let isLoggedIn = $state(false);
+
+	// Format time as M:SS
+	function formatTime(seconds: number): string {
+		const mins = Math.floor(seconds / 60);
+		const secs = seconds % 60;
+		return `${mins}:${secs.toString().padStart(2, '0')}`;
+	}
 
 	// Detect mobile/touch device
 	function detectMobile(): boolean {
@@ -46,10 +56,73 @@
 		hard: { label: 'HARD', description: 'Prepare to suffer', winCoins: COIN_REWARDS.hard.win }
 	};
 
+	// Award coins via API (for logged in users) or localStorage (anonymous)
+	async function awardCoins(userScore: number, aiScore: number) {
+		if (isLoggedIn) {
+			// Use API to record match and award coins
+			try {
+				const response = await fetch('/api/match', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						difficulty,
+						userScore,
+						aiScore
+					})
+				});
+
+				if (response.ok) {
+					const data = await response.json();
+					coinsEarned = data.coinsEarned;
+					currentCoins = data.newBalance;
+				} else {
+					// Fallback to local if API fails
+					const reward = calculateMatchReward(difficulty, userScore, aiScore);
+					coinsEarned = reward.amount;
+					currentCoins = addCoins(reward.amount);
+				}
+			} catch {
+				// Fallback to local if API fails
+				const reward = calculateMatchReward(difficulty, userScore, aiScore);
+				coinsEarned = reward.amount;
+				currentCoins = addCoins(reward.amount);
+			}
+		} else {
+			// Anonymous user - use localStorage
+			const reward = calculateMatchReward(difficulty, userScore, aiScore);
+			coinsEarned = reward.amount;
+			currentCoins = addCoins(reward.amount);
+		}
+
+		coinsAwarded = true;
+		setTimeout(() => playCoinSound(), 300);
+	}
+
 	onMount(async () => {
 		if (browser) {
 			gameModule = await import('$lib/game');
-			currentCoins = getCoins();
+
+			// Check if user is logged in and get their coins from Supabase
+			if (supabase) {
+				const { data: { session } } = await supabase.auth.getSession();
+				if (session) {
+					isLoggedIn = true;
+					// Get coins from profile
+					const { data: profile } = await supabase
+						.from('profiles')
+						.select('coins')
+						.eq('id', session.user.id)
+						.single();
+					if (profile) {
+						currentCoins = profile.coins;
+					}
+				} else {
+					currentCoins = getCoins();
+				}
+			} else {
+				currentCoins = getCoins();
+			}
+
 			isMobile = detectMobile();
 		}
 	});
@@ -72,6 +145,9 @@
 					if (scorer === 'player') playerScore++;
 					else aiScore++;
 				},
+				onTimeUpdate: (time: number) => {
+					gameTime = time;
+				},
 				onGameEnd: (result) => {
 					gameEnded = true;
 					playerScore = result.playerScore;
@@ -80,12 +156,7 @@
 					// Award coins!
 					if (!coinsAwarded) {
 						resumeAudio();
-						const reward = calculateMatchReward(difficulty, result.playerScore, result.aiScore);
-						coinsEarned = reward.amount;
-						currentCoins = addCoins(reward.amount);
-						coinsAwarded = true;
-						// Play satisfying coin sound
-						setTimeout(() => playCoinSound(), 300);
+						awardCoins(result.playerScore, result.aiScore);
 					}
 				}
 			});
@@ -100,6 +171,7 @@
 		gameEnded = false;
 		playerScore = 0;
 		aiScore = 0;
+		gameTime = 180; // Reset timer to 3 minutes
 		coinsAwarded = false;
 		coinsEarned = 0;
 
@@ -108,7 +180,7 @@
 		shouldStartGame = true;
 	}
 
-	function restartGame() {
+	async function restartGame() {
 		if (game && gameModule) {
 			gameModule.destroyGame(game);
 			game = null;
@@ -117,7 +189,23 @@
 		gameEnded = false;
 		coinsAwarded = false;
 		coinsEarned = 0;
-		currentCoins = getCoins(); // Refresh balance
+
+		// Refresh balance from correct source
+		if (isLoggedIn && supabase) {
+			const { data: { session } } = await supabase.auth.getSession();
+			if (session) {
+				const { data: profile } = await supabase
+					.from('profiles')
+					.select('coins')
+					.eq('id', session.user.id)
+					.single();
+				if (profile) {
+					currentCoins = profile.coins;
+				}
+			}
+		} else {
+			currentCoins = getCoins();
+		}
 	}
 
 	function getResultMessage() {
@@ -221,7 +309,10 @@
 							<span class="score-label">YOU</span>
 							<span class="score-value player">{playerScore}</span>
 						</div>
-						<span class="score-divider">-</span>
+						<div class="score-center">
+							<span class="score-divider">-</span>
+							<span class="game-timer">{formatTime(gameTime)}</span>
+						</div>
 						<div class="score-side">
 							<span class="score-label">AI</span>
 							<span class="score-value ai">{aiScore}</span>
@@ -574,9 +665,21 @@
 		color: #ef4444;
 	}
 
+	.score-center {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
 	.score-divider {
 		font-size: 1.5rem;
 		color: var(--color-text-muted);
+	}
+
+	.game-timer {
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
 	}
 
 	.game-wrapper {
