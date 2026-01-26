@@ -17,7 +17,8 @@
 		{ href: '/scout', label: 'SCOUT' },
 		{ href: '/marketplace', label: 'MARKET' },
 		{ href: '/challenges', label: 'CHALLENGES' },
-		{ href: '/leaderboard', label: 'RANKS' }
+		{ href: '/leaderboard', label: 'RANKS' },
+		{ href: '/pvp', label: 'PVP' }
 	];
 
 	function toggleMobileMenu() {
