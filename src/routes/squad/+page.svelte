@@ -29,6 +29,10 @@
 	}
 
 	async function toggleStarter(player: Player) {
+		if (!supabase) {
+			alert('Database connection not available');
+			return;
+		}
 		if (player.is_starter) {
 			// Remove from starters - delete from squads table
 			const { error } = await supabase
@@ -61,7 +65,7 @@
 				nextPosition++;
 			}
 
-			const { error } = await supabase
+			const { error } = await supabase!
 				.from('squads')
 				.insert({
 					user_id: data.profile.id,
@@ -103,6 +107,10 @@
 	}
 
 	async function handleListPlayer(player: Player, price: number) {
+		if (!supabase) {
+			alert('Database connection not available');
+			return;
+		}
 		// Update player in Supabase to list for trade
 		const { error } = await supabase
 			.from('players')

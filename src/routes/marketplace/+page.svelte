@@ -81,6 +81,19 @@
 		const sellerId = player.owner_id;
 		const price = player.listPrice;
 
+		// Calculate 5% marketplace fee
+		const fee = Math.floor(price * 0.05);
+		const sellerReceives = price - fee;
+
+		// Confirm purchase with fee breakdown
+		const confirmed = confirm(
+			`Buy ${player.name} for ${price} coins?\n\n` +
+			`Seller receives: ${sellerReceives} coins\n` +
+			`Marketplace fee (5%): ${fee} coins`
+		);
+
+		if (!confirmed) return;
+
 		// Transfer player ownership
 		const { error: transferError } = await supabase
 			.from('players')
@@ -93,7 +106,7 @@
 			return;
 		}
 
-		// Deduct coins from buyer
+		// Deduct coins from buyer (full price)
 		const { error: buyerError } = await supabase
 			.from('profiles')
 			.update({ coins: myCoins - price })
@@ -103,7 +116,7 @@
 			console.error('Failed to deduct coins:', buyerError);
 		}
 
-		// Add coins to seller
+		// Add coins to seller (minus 5% fee)
 		const { data: sellerProfile } = await supabase
 			.from('profiles')
 			.select('coins')
@@ -113,11 +126,11 @@
 		if (sellerProfile) {
 			await supabase
 				.from('profiles')
-				.update({ coins: sellerProfile.coins + price })
+				.update({ coins: sellerProfile.coins + sellerReceives })
 				.eq('id', sellerId);
 		}
 
-		// Add provenance record
+		// Add provenance record (records full price paid)
 		await supabase.from('player_provenance').insert({
 			player_id: player.id,
 			from_user_id: sellerId,
