@@ -5,9 +5,12 @@
 		isAuthenticated?: boolean;
 		username?: string;
 		coins?: number;
+		subscriptionTier?: 'free' | 'manager_club';
 	}
 
-	let { isAuthenticated = false, username = '', coins = 0 }: Props = $props();
+	let { isAuthenticated = false, username = '', coins = 0, subscriptionTier = 'free' }: Props = $props();
+
+	const isManagerClub = $derived(subscriptionTier === 'manager_club');
 
 	let mobileMenuOpen = $state(false);
 
@@ -57,7 +60,10 @@
 						<span class="text-text-muted">coins</span>
 					</div>
 					<div class="h-4 w-px bg-border"></div>
-					<a href="/profile" class="text-text-secondary hover:text-text-primary text-sm">
+					<a href="/profile" class="flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm">
+						{#if isManagerClub}
+							<span class="manager-badge" title="Manager Club Member">👑</span>
+						{/if}
 						@{username}
 					</a>
 				{:else}
@@ -109,7 +115,12 @@
 
 					{#if isAuthenticated}
 						<div class="flex items-center justify-between py-2">
-							<span class="text-text-secondary text-sm">@{username}</span>
+							<span class="flex items-center gap-2 text-text-secondary text-sm">
+								{#if isManagerClub}
+									<span class="manager-badge" title="Manager Club Member">👑</span>
+								{/if}
+								@{username}
+							</span>
 							<span class="text-accent font-pixel text-sm">{coins.toLocaleString()} coins</span>
 						</div>
 						<a href="/profile" class="btn btn-secondary w-full">

@@ -29,6 +29,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@supabase/supabase-js": "^2.45.0",
+    "html2canvas": "^1.4.1",
     "phaser": "^3.80.0",
     "stripe": "^20.2.0"
   },
