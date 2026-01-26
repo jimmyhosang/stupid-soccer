@@ -290,11 +290,11 @@
 							<span class="control-desc">Move</span>
 						</div>
 						<div class="control-row">
-							<kbd class="key">Space</kbd>
+							<kbd class="key">S</kbd>
 							<span class="control-desc">Kick</span>
 						</div>
 						<div class="control-row">
-							<kbd class="key">S</kbd>
+							<kbd class="key">A</kbd>
 							<span class="control-desc">Switch player</span>
 						</div>
 					</div>
@@ -339,11 +339,11 @@
 							<span class="sidebar-label">Move</span>
 						</div>
 						<div class="sidebar-control">
-							<kbd class="sidebar-key">Space</kbd>
+							<kbd class="sidebar-key">S</kbd>
 							<span class="sidebar-label">Kick</span>
 						</div>
 						<div class="sidebar-control">
-							<kbd class="sidebar-key">S</kbd>
+							<kbd class="sidebar-key">A</kbd>
 							<span class="sidebar-label">Switch</span>
 						</div>
 					</div>
