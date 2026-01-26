@@ -31,6 +31,17 @@ export const GET: RequestHandler = async ({ cookies }) => {
 		.select('*')
 		.in('id', challengeIds);
 
+	// Get streak info
+	const { data: streakData } = await supabaseAdmin
+		.rpc('get_user_streak', { p_user_id: user.id });
+
+	const streakInfo = streakData?.[0] || {
+		streak: 0,
+		last_completion_date: null,
+		streak_active: false,
+		potential_bonus: 10
+	};
+
 	// Combine assignment data with challenge details
 	const result = (assignments || []).map((assignment: {
 		id: string;
@@ -54,7 +65,15 @@ export const GET: RequestHandler = async ({ cookies }) => {
 		};
 	});
 
-	return json({ challenges: result });
+	return json({
+		challenges: result,
+		streak: {
+			current: streakInfo.streak,
+			isActive: streakInfo.streak_active,
+			potentialBonus: streakInfo.potential_bonus,
+			lastCompletionDate: streakInfo.last_completion_date
+		}
+	});
 };
 
 // POST: Claim a challenge reward
@@ -125,9 +144,27 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		.update({ coins: newBalance })
 		.eq('id', user.id);
 
+	// Check and update streak (awards bonus if all 3 challenges completed)
+	const { data: streakResult } = await supabaseAdmin
+		.rpc('check_challenge_streak', { p_user_id: user.id });
+
+	const streakInfo = streakResult?.[0] || { streak: 0, bonus_coins: 0, streak_updated: false };
+
+	// Get final balance after streak bonus
+	const { data: finalProfile } = await supabaseAdmin
+		.from('profiles')
+		.select('coins')
+		.eq('id', user.id)
+		.single();
+
 	return json({
 		success: true,
 		coinsEarned: reward,
-		newBalance
+		newBalance: finalProfile?.coins || newBalance,
+		streak: {
+			current: streakInfo.streak,
+			bonusAwarded: streakInfo.bonus_coins,
+			streakUpdated: streakInfo.streak_updated
+		}
 	});
 };

@@ -1,0 +1,472 @@
+{
+  "project": "Stupid Soccer",
+  "branchName": "ralph/p1-features",
+  "description": "P1 features for Stupid Soccer: match results, daily challenges, leaderboards, share feature, async PvP, and Stripe subscriptions. Core gameplay, packs, and marketplace already implemented.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Match Results API Endpoint",
+      "description": "Create API endpoint to save match results after Phaser game ends. Endpoint receives difficulty, user score, AI score, and squad snapshot.",
+      "acceptanceCriteria": [
+        "POST /api/match/save endpoint exists in src/routes/api/match/save/+server.ts",
+        "Accepts JSON body with difficulty, userScore, aiScore, squadSnapshot",
+        "Validates user is authenticated",
+        "Creates record in matches table",
+        "Returns matchId and coinsEarned in response",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Coin Rewards Calculation",
+      "description": "Calculate and award coins based on match outcome: Win=25, Draw=10, Loss=5, plus 5 per goal scored.",
+      "acceptanceCriteria": [
+        "coins_earned calculated correctly in match save API",
+        "Win (userScore > aiScore) awards 25 base coins",
+        "Draw (userScore == aiScore) awards 10 base coins",
+        "Loss (userScore < aiScore) awards 5 base coins",
+        "Additional +5 coins per user goal scored",
+        "User's profile coins updated atomically",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Phaser Match End Event",
+      "description": "Emit match result event from Phaser game when timer ends, triggering API call to save results.",
+      "acceptanceCriteria": [
+        "MainScene emits 'matchEnd' event with scores when timer reaches 0",
+        "SvelteKit component listens for event",
+        "Calls /api/match/save with match data",
+        "Shows loading state during save",
+        "Verify in browser: match end triggers save",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Match Results Screen",
+      "description": "Display results overlay after match ends showing score, coins earned, and navigation options.",
+      "acceptanceCriteria": [
+        "Results overlay appears over Phaser canvas after match",
+        "Shows final score (e.g., 'You 3 - 1 AI')",
+        "Shows coins earned with breakdown (base + goals)",
+        "Shows updated total coin balance",
+        "'Play Again' button restarts match",
+        "'Back to Squad' button navigates to /squad",
+        "Verify in browser: results screen displays correctly",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Profile Stats - Wins/Losses Tracking",
+      "description": "Track total wins, losses, draws, and goals on user profile.",
+      "acceptanceCriteria": [
+        "profiles table has total_wins, total_losses, total_draws, total_goals columns",
+        "Match save API updates these counters",
+        "Profile page displays win/loss/draw record",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Daily Challenges Database Schema",
+      "description": "Create tables for challenge definitions and user progress tracking.",
+      "acceptanceCriteria": [
+        "challenges table exists with id, type, target, reward_coins, reward_pack_type columns",
+        "user_daily_challenges table exists with user_id, challenge_id, progress, completed_at, assigned_at columns",
+        "RLS policies allow users to read/update own challenges",
+        "Seed data includes challenge types: win_matches, open_packs, score_goals, trade_player, use_scout",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Daily Challenge Assignment",
+      "description": "Assign 3 random challenges to users daily at midnight UTC or on first login.",
+      "acceptanceCriteria": [
+        "Function assigns 3 random challenges from pool",
+        "Challenges assigned on user's first visit of the day",
+        "Previous incomplete challenges cleared at midnight UTC",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Daily Challenges Page UI",
+      "description": "Create page showing user's daily challenges with progress indicators.",
+      "acceptanceCriteria": [
+        "src/routes/challenges/+page.svelte displays 3 daily challenges",
+        "Each challenge shows: description, progress (e.g., 1/2), reward",
+        "Completed challenges show checkmark and 'Claim' button",
+        "Progress bar visualization",
+        "Verify in browser: challenges page renders correctly",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Challenge Progress Tracking",
+      "description": "Update challenge progress when user completes relevant actions (wins, packs, etc.).",
+      "acceptanceCriteria": [
+        "Win match increments 'win_matches' challenge progress",
+        "Open pack increments 'open_packs' challenge progress",
+        "Score goal increments 'score_goals' challenge progress",
+        "Progress updates in real-time on challenges page",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Challenge Reward Claiming",
+      "description": "Allow users to claim rewards when challenge is complete.",
+      "acceptanceCriteria": [
+        "'Claim' button appears on completed challenges",
+        "Clicking awards coins to user's profile",
+        "If reward includes pack, pack added to inventory",
+        "Challenge marked as claimed (cannot claim twice)",
+        "Verify in browser: claiming works correctly",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Leaderboards Database Schema",
+      "description": "Create leaderboard_entries table for cached rankings.",
+      "acceptanceCriteria": [
+        "leaderboard_entries table with user_id, leaderboard_type, score, rank, period columns",
+        "leaderboard_type supports: wins, goals, coins, pvp",
+        "period supports: daily, weekly, all_time",
+        "Unique constraint on (user_id, leaderboard_type, period)",
+        "RLS allows public read access",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Leaderboards Page UI",
+      "description": "Create page showing top players by various metrics.",
+      "acceptanceCriteria": [
+        "src/routes/leaderboard/+page.svelte displays rankings",
+        "Tabs for different leaderboard types (Wins, Goals, Coins)",
+        "Toggle for period (Weekly, All-Time)",
+        "Shows rank, username, score for top 100",
+        "Highlights current user's position",
+        "Verify in browser: leaderboard displays correctly",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Leaderboard Rank Calculation",
+      "description": "Calculate and cache leaderboard rankings periodically.",
+      "acceptanceCriteria": [
+        "Database function calculates ranks from profiles/matches data",
+        "Ranks updated on relevant actions or via scheduled job",
+        "Ties handled consistently (same rank, skip next)",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Share Card Component",
+      "description": "Create shareable player card component optimized for social media.",
+      "acceptanceCriteria": [
+        "src/lib/components/ShareCard.svelte renders player card at 1200x630px",
+        "Shows player sprite, name, stats, rarity, backstory snippet",
+        "Includes 'stupidsoccer.gg' branding in corner",
+        "Background color based on rarity (common/rare/legendary)",
+        "Verify in browser: card looks good at share dimensions",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Share Image Generation",
+      "description": "Generate PNG image from ShareCard using html2canvas.",
+      "acceptanceCriteria": [
+        "html2canvas converts ShareCard to PNG blob",
+        "Image quality suitable for social sharing",
+        "Generation completes in under 3 seconds",
+        "Works on mobile browsers",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Share Buttons Integration",
+      "description": "Add share buttons for Twitter, Discord, and download.",
+      "acceptanceCriteria": [
+        "Share button on PlayerCard and after pack opening",
+        "Twitter button opens tweet composer with image and text",
+        "Download button saves PNG to device",
+        "Copy link button copies shareable URL",
+        "Verify in browser: sharing works on desktop and mobile",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Async PvP Database Schema",
+      "description": "Create tables for PvP leagues, entries, and matches.",
+      "acceptanceCriteria": [
+        "pvp_leagues table with season_number, starts_at, ends_at, is_active",
+        "pvp_entries table with league_id, user_id, squad_snapshot, wins, losses, points, rank",
+        "pvp_matches table with league_id, player1_id, player2_id, scores, simulated_at",
+        "RLS policies for appropriate access",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "PvP League Join Flow",
+      "description": "Allow users to join the current weekly league with their squad.",
+      "acceptanceCriteria": [
+        "src/routes/pvp/+page.svelte shows current league info",
+        "'Join League' button visible if not already joined",
+        "Joining snapshots current 3-player squad",
+        "Entry created in pvp_entries table",
+        "Cannot join if already in current league",
+        "Verify in browser: can join league",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "PvP Match Simulation Logic",
+      "description": "Implement stat-based match simulation for async PvP.",
+      "acceptanceCriteria": [
+        "src/lib/server/pvp-simulation.ts contains simulation logic",
+        "Team power calculated from squad stats",
+        "Randomness factor (±20%) applied",
+        "Scores capped at 5 goals max",
+        "Simulation is deterministic given same seed",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "PvP Daily Simulation Cron",
+      "description": "Run daily simulations matching league participants.",
+      "acceptanceCriteria": [
+        "Supabase Edge Function or cron job runs daily",
+        "Each entry plays 1-2 matches per day against random opponents",
+        "Results saved to pvp_matches table",
+        "Entry wins/losses/points updated",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "PvP Results and Rankings UI",
+      "description": "Show league standings and match results.",
+      "acceptanceCriteria": [
+        "PvP page shows current league standings",
+        "User's rank and points displayed prominently",
+        "Recent matches section shows results",
+        "Can view opponent squad for each match",
+        "Verify in browser: standings display correctly",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "PvP Weekly Rewards",
+      "description": "Award coins to top players at end of league week.",
+      "acceptanceCriteria": [
+        "Reward tiers: 1st=500, 2nd=300, 3rd=200, top 10=100, top 50=50 coins",
+        "Rewards distributed when league ends",
+        "Users notified of reward on next login",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Stripe Integration Setup",
+      "description": "Configure Stripe for subscription payments.",
+      "acceptanceCriteria": [
+        "Stripe SDK installed and configured",
+        "Environment variables for STRIPE_SECRET_KEY, PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET",
+        "Product and Price created in Stripe for Manager Club ($5/month)",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Stripe Checkout Session",
+      "description": "Create checkout session for Manager Club subscription.",
+      "acceptanceCriteria": [
+        "POST /api/stripe/checkout creates Stripe checkout session",
+        "Redirects user to Stripe hosted checkout",
+        "Success URL returns to /subscribe/success",
+        "Cancel URL returns to /subscribe",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Stripe Webhook Handler",
+      "description": "Handle Stripe webhooks for subscription lifecycle events.",
+      "acceptanceCriteria": [
+        "POST /api/webhooks/stripe handles Stripe events",
+        "checkout.session.completed updates profile to manager_club",
+        "customer.subscription.deleted reverts to free tier",
+        "Webhook signature verified",
+        "Typecheck passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Manager Club Subscription Page",
+      "description": "Create page to upgrade to Manager Club subscription.",
+      "acceptanceCriteria": [
+        "src/routes/subscribe/+page.svelte shows subscription benefits",
+        "Lists: Unlimited AI Scout, Unlimited Trades, Badge, No Ads",
+        "Price shown as $5/month",
+        "'Subscribe' button initiates Stripe checkout",
+        "If already subscribed, shows billing portal link",
+        "Verify in browser: subscription flow works end-to-end",
+        "Typecheck passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Manager Club Badge Display",
+      "description": "Show Manager Club badge on subscriber profiles.",
+      "acceptanceCriteria": [
+        "Badge icon displayed next to username in nav",
+        "Badge shown on profile page",
+        "Badge appears on marketplace listings",
+        "Verify in browser: badge visible for subscribers",
+        "Typecheck passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Marketplace 5% Fee",
+      "description": "Deduct 5% fee from marketplace sales.",
+      "acceptanceCriteria": [
+        "When player is sold, seller receives 95% of sale price",
+        "5% fee deducted automatically",
+        "Fee shown in transaction confirmation",
+        "Typecheck passes"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": "Fee calculated using Math.floor(price * 0.05), shown in confirm dialog"
+    },
+    {
+      "id": "US-029",
+      "title": "Navigation Update for New Pages",
+      "description": "Add Challenges, Leaderboard, and PvP to navigation.",
+      "acceptanceCriteria": [
+        "Nav includes links to /challenges, /leaderboard, /pvp",
+        "Active page highlighted in nav",
+        "Mobile nav includes all links",
+        "Verify in browser: navigation works",
+        "Typecheck passes"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": "Header component updated with PvP link, layout now includes Header globally"
+    },
+    {
+      "id": "US-030",
+      "title": "Streak Bonus for Daily Challenges",
+      "description": "Award bonus coins for completing challenges on consecutive days.",
+      "acceptanceCriteria": [
+        "profiles table has challenge_streak column",
+        "Streak incremented when all 3 daily challenges completed",
+        "Streak reset if day missed",
+        "Bonus: +10 coins per streak day (capped at +50)",
+        "Streak displayed on challenges page",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": "Implemented with migration 20240124000006_challenge_streaks.sql"
+    }
+  ]
+}

@@ -15,10 +15,19 @@
 		coinReward: number;
 	}
 
+	interface Streak {
+		current: number;
+		isActive: boolean;
+		potentialBonus: number;
+		lastCompletionDate: string | null;
+	}
+
 	let challenges = $state<Challenge[]>([]);
+	let streak = $state<Streak>({ current: 0, isActive: false, potentialBonus: 10, lastCompletionDate: null });
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let claiming = $state<string | null>(null);
+	let streakBonusMessage = $state<string | null>(null);
 
 	onMount(async () => {
 		await loadChallenges();
@@ -41,6 +50,9 @@
 
 			const data = await response.json();
 			challenges = data.challenges;
+			if (data.streak) {
+				streak = data.streak;
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Something went wrong';
 		} finally {
@@ -52,6 +64,7 @@
 		if (claiming || !challenge.isCompleted || challenge.isClaimed) return;
 
 		claiming = challenge.id;
+		streakBonusMessage = null;
 
 		try {
 			const response = await fetch('/api/challenges', {
@@ -70,6 +83,23 @@
 			challenges = challenges.map(c =>
 				c.id === challenge.id ? { ...c, isClaimed: true } : c
 			);
+
+			// Update streak info and show bonus message
+			if (data.streak) {
+				streak = {
+					...streak,
+					current: data.streak.current,
+					isActive: true
+				};
+
+				if (data.streak.streakUpdated && data.streak.bonusAwarded > 0) {
+					streakBonusMessage = `Streak Bonus! +${data.streak.bonusAwarded} coins (${data.streak.current} day streak)`;
+					// Auto-hide message after 5 seconds
+					setTimeout(() => {
+						streakBonusMessage = null;
+					}, 5000);
+				}
+			}
 
 			// Play coin sound
 			playCoinSound();
@@ -134,13 +164,38 @@
 				<span class="text-accent">DAILY</span> CHALLENGES
 			</h1>
 			<p class="text-text-secondary">Complete challenges to earn bonus coins!</p>
-			<div class="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-surface rounded-full">
-				<svg class="w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-				</svg>
-				<span class="text-text-muted text-sm">Resets in <span class="text-primary font-medium">{timeUntilReset}</span></span>
+
+			<!-- Streak Display -->
+			<div class="mt-4 flex flex-wrap justify-center gap-3">
+				<div class="inline-flex items-center gap-2 px-4 py-2 bg-surface rounded-full {streak.current > 0 && streak.isActive ? 'border border-accent/50' : ''}">
+					<span class="text-xl">{streak.current > 0 && streak.isActive ? '🔥' : '❄️'}</span>
+					<span class="text-text-primary font-medium">{streak.current} day{streak.current !== 1 ? 's' : ''}</span>
+					{#if streak.potentialBonus > 0}
+						<span class="text-accent text-sm">+{streak.potentialBonus} bonus</span>
+					{/if}
+				</div>
+				<div class="inline-flex items-center gap-2 px-4 py-2 bg-surface rounded-full">
+					<svg class="w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span class="text-text-muted text-sm">Resets in <span class="text-primary font-medium">{timeUntilReset}</span></span>
+				</div>
 			</div>
+
+			<!-- Streak info tooltip -->
+			<p class="mt-3 text-text-muted text-xs">
+				Complete all 3 challenges daily to build your streak! Bonus: +10 coins per day (max +50)
+			</p>
 		</div>
+
+		<!-- Streak Bonus Toast -->
+		{#if streakBonusMessage}
+			<div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+				<div class="bg-accent text-background px-6 py-3 rounded-full font-pixel text-sm shadow-lg">
+					🔥 {streakBonusMessage}
+				</div>
+			</div>
+		{/if}
 
 		{#if loading}
 			<div class="flex justify-center py-12">

@@ -1,0 +1,63 @@
+# Ralph Progress Log
+Started: January 2026
+Project: Stupid Soccer - P1 Features
+---
+
+## Codebase Patterns
+- SvelteKit uses +page.svelte for pages, +page.server.ts for server-side load/actions
+- Supabase client in src/lib/server/supabase.ts for server-side, src/lib/supabase.ts for browser
+- Tailwind v4 with violet/emerald/slate color palette
+- Phaser 3 game embedded as Svelte component
+- All database tables MUST have RLS enabled
+- Use Svelte 5 runes: $state, $derived, $effect
+- API auth pattern: get sb-access-token cookie, verify with supabaseAdmin.auth.getUser()
+
+---
+
+## 2026-01-26 - US-001
+- Implemented POST /api/match/save endpoint for saving match results
+- Files changed: src/routes/api/match/save/+server.ts (new file)
+- **Learnings for future iterations:**
+  - Existing /api/match/+server.ts has similar functionality but uses difficulty-based rewards; new endpoint uses simpler base + goals formula
+  - matches table already exists with squad_snapshot JSONB column
+  - API endpoints use SvelteKit's json() and error() utilities from @sveltejs/kit
+---
+
+## 2026-01-26 - US-030
+- Implemented streak bonus system for daily challenges
+- Files changed:
+  - supabase/migrations/20240124000006_challenge_streaks.sql (new file)
+  - src/routes/api/challenges/+server.ts (updated GET and POST)
+  - src/routes/challenges/+page.svelte (added streak display)
+- **Learnings for future iterations:**
+  - Daily challenges use assigned_at DATE to track which day they belong to
+  - Streak logic: consecutive days = v_last_completion = v_yesterday
+  - Bonus capped at +50 coins (5+ day streak)
+  - Use .rpc() for calling database functions that return table data
+  - Streak info returned as array from RPC, access via result?.[0]
+---
+
+## 2026-01-26 - US-029
+- Added navigation for Challenges, Leaderboard, and PvP pages
+- Files changed:
+  - src/lib/components/Header.svelte (added PvP link to navLinks)
+  - src/routes/+layout.svelte (integrated Header component globally)
+  - src/routes/pvp/+page.svelte (created placeholder page)
+- **Learnings for future iterations:**
+  - Header component already existed with most nav links
+  - Layout uses $derived to compute showHeader based on page path
+  - Pages like /, /login, /signup, /play don't show header
+  - Auth state from createAuthState() provides isAuthenticated, profile
+---
+
+## 2026-01-26 - US-028
+- Implemented 5% marketplace fee for player sales
+- Files changed:
+  - src/routes/marketplace/+page.svelte (updated buyPlayer function)
+- **Learnings for future iterations:**
+  - Fee calculated as Math.floor(price * 0.05) to ensure integer coins
+  - Buyer pays full price, seller receives price - fee
+  - Trade offers with coins use escrow (coins deducted when trade created)
+  - Trade acceptance flow not fully implemented yet (P1 feature)
+  - confirm() dialog used for purchase confirmation with fee breakdown
+---
