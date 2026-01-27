@@ -3,6 +3,7 @@
 	import ListForTradeModal from '$lib/components/ListForTradeModal.svelte';
 	import type { Player } from '$lib/types/database';
 	import { supabase } from '$lib/stores/auth.svelte';
+	import { xpProgress, formatXp, getLevelTier, getLevelTierColor, xpToNextLevel } from '$lib/xp';
 
 	// Get data from server load function
 	let { data } = $props();
@@ -97,6 +98,15 @@
 		return Math.round(starters.reduce((sum, p) => sum + calculateOverall(p), 0) / starters.length);
 	}
 
+	function getTeamTotalXp() {
+		return myPlayers.reduce((sum, p) => sum + (p.xp || 0), 0);
+	}
+
+	function getTeamAverageLevel() {
+		if (myPlayers.length === 0) return 1;
+		return Math.round(myPlayers.reduce((sum, p) => sum + (p.level || 1), 0) / myPlayers.length);
+	}
+
 	function openListModal(player: Player) {
 		if (player.is_starter) {
 			alert('Remove player from starters before listing for trade');
@@ -165,12 +175,16 @@
 					<div class="stat-value stat-primary">{getTeamOverall()}</div>
 				</div>
 				<div class="stat-item">
+					<span class="stat-label">AVG LEVEL</span>
+					<div class="stat-value stat-secondary">{getTeamAverageLevel()}</div>
+				</div>
+				<div class="stat-item">
 					<span class="stat-label">STARTERS</span>
 					<div class="stat-value {starters.length === 3 ? 'stat-secondary' : 'stat-accent'}">{starters.length}/3</div>
 				</div>
 				<div class="stat-item">
-					<span class="stat-label">TOTAL PLAYERS</span>
-					<div class="stat-value">{myPlayers.length}</div>
+					<span class="stat-label">TOTAL XP</span>
+					<div class="stat-value">{formatXp(getTeamTotalXp())}</div>
 				</div>
 				<div class="stat-item">
 					<span class="stat-label">COINS</span>
@@ -256,19 +270,77 @@
 						</div>
 
 						<div class="space-y-4">
-							<div>
-								<span class="text-text-muted text-xs">OVERALL RATING</span>
-								<div class="font-pixel text-2xl text-primary">{calculateOverall(selectedPlayer)}</div>
+							<!-- Level & XP Progress -->
+							<div class="bg-black/20 rounded-lg p-3">
+								<div class="flex justify-between items-center mb-2">
+									<div>
+										<span class="text-text-muted text-xs">LEVEL</span>
+										<div class="flex items-center gap-2">
+											<span class="font-pixel text-2xl text-primary">{selectedPlayer.level || 1}</span>
+											<span class="text-xs {getLevelTierColor(selectedPlayer.level || 1)}">{getLevelTier(selectedPlayer.level || 1)}</span>
+										</div>
+									</div>
+									<div class="text-right">
+										<span class="text-text-muted text-xs">TOTAL XP</span>
+										<div class="font-pixel text-lg text-accent">{formatXp(selectedPlayer.xp || 0)}</div>
+									</div>
+								</div>
+								{#if (selectedPlayer.level || 1) < 99}
+									<div class="mt-2">
+										<div class="h-2 bg-black/50 rounded-full overflow-hidden">
+											<div
+												class="h-full bg-gradient-to-r from-primary to-accent transition-all duration-300"
+												style="width: {Math.round(xpProgress(selectedPlayer.xp || 0, selectedPlayer.level || 1) * 100)}%"
+											></div>
+										</div>
+										<div class="flex justify-between text-[10px] mt-1">
+											<span class="text-text-muted">{Math.round(xpProgress(selectedPlayer.xp || 0, selectedPlayer.level || 1) * 100)}% to next level</span>
+											<span class="text-accent">{formatXp(xpToNextLevel(selectedPlayer.xp || 0, selectedPlayer.level || 1))} XP needed</span>
+										</div>
+									</div>
+								{:else}
+									<div class="text-center text-amber-400 text-sm font-bold mt-2">MAX LEVEL</div>
+								{/if}
 							</div>
 
-							<div>
-								<span class="text-text-muted text-xs">RARITY</span>
-								<div class="inline-block mt-1 px-2 py-1 rounded text-xs font-bold uppercase
-									{selectedPlayer.rarity === 'legendary' ? 'bg-amber-400 text-amber-900' :
-									 selectedPlayer.rarity === 'rare' ? 'bg-blue-400 text-blue-900' :
-									 'bg-slate-400 text-slate-900'}">
-									{selectedPlayer.rarity}
+							<!-- Match Stats -->
+							<div class="grid grid-cols-3 gap-2 text-center">
+								<div class="bg-black/20 rounded p-2">
+									<div class="text-lg font-pixel text-text-primary">{selectedPlayer.total_matches || 0}</div>
+									<div class="text-[10px] text-text-muted">MATCHES</div>
 								</div>
+								<div class="bg-black/20 rounded p-2">
+									<div class="text-lg font-pixel text-text-primary">{selectedPlayer.total_goals || 0}</div>
+									<div class="text-[10px] text-text-muted">GOALS</div>
+								</div>
+								<div class="bg-black/20 rounded p-2">
+									<div class="text-lg font-pixel text-text-primary">{selectedPlayer.total_wins || 0}</div>
+									<div class="text-[10px] text-text-muted">WINS</div>
+								</div>
+							</div>
+
+							<div class="flex gap-2">
+								<div>
+									<span class="text-text-muted text-xs">OVERALL</span>
+									<div class="font-pixel text-2xl text-primary">{calculateOverall(selectedPlayer)}</div>
+								</div>
+								<div>
+									<span class="text-text-muted text-xs">RARITY</span>
+									<div class="inline-block mt-1 px-2 py-1 rounded text-xs font-bold uppercase
+										{selectedPlayer.rarity === 'legendary' ? 'bg-amber-400 text-amber-900' :
+										 selectedPlayer.rarity === 'rare' ? 'bg-blue-400 text-blue-900' :
+										 'bg-slate-400 text-slate-900'}">
+										{selectedPlayer.rarity}
+									</div>
+								</div>
+								{#if selectedPlayer.generation > 1}
+									<div>
+										<span class="text-text-muted text-xs">GEN</span>
+										<div class="inline-block mt-1 px-2 py-1 rounded text-xs font-bold bg-purple-500 text-white">
+											{selectedPlayer.generation}
+										</div>
+									</div>
+								{/if}
 							</div>
 
 							<div>

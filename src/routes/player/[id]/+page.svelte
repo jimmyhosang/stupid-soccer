@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PlayerCard from '$lib/components/PlayerCard.svelte';
-	import type { Player } from '$lib/types/database';
+	import type { Player, MatchPerformance, LevelUp } from '$lib/types/database';
+	import { xpProgress, formatXp, getLevelTier, getLevelTierColor, xpToNextLevel, xpForLevel } from '$lib/xp';
 
 	let { data } = $props();
 
@@ -8,6 +9,7 @@
 	const provenance = data.provenance;
 	const isOwner = data.isOwner;
 	const canTrade = data.canTrade;
+	const levelUps = (data.levelUps || []) as LevelUp[];
 
 	let copied = $state(false);
 	let shareError = $state<string | null>(null);
@@ -15,6 +17,14 @@
 	function calculateOverall(p: Player) {
 		return Math.round((p.pace + p.shooting + p.passing + p.defense + p.stamina) / 5);
 	}
+
+	// XP calculations
+	const level = player.level || 1;
+	const xp = player.xp || 0;
+	const progress = xpProgress(xp, level);
+	const progressPercent = Math.round(progress * 100);
+	const tierColor = getLevelTierColor(level);
+	const tier = getLevelTier(level);
 
 	async function copyLink() {
 		try {
@@ -123,6 +133,110 @@
 					</p>
 				</div>
 
+				<!-- Level & XP -->
+				<div class="card p-6 bg-gradient-to-r from-primary/10 to-accent/10">
+					<div class="flex justify-between items-start mb-4">
+						<div>
+							<span class="text-text-muted text-xs">LEVEL</span>
+							<div class="flex items-center gap-3">
+								<span class="font-pixel text-4xl text-primary">{level}</span>
+								<span class="{tierColor} text-sm font-semibold">{tier}</span>
+							</div>
+						</div>
+						<div class="text-right">
+							<span class="text-text-muted text-xs">TOTAL XP</span>
+							<div class="font-pixel text-2xl text-accent">{formatXp(xp)}</div>
+						</div>
+					</div>
+					{#if level < 99}
+						<div class="mt-4">
+							<div class="h-3 bg-black/30 rounded-full overflow-hidden">
+								<div
+									class="h-full bg-gradient-to-r from-primary to-accent transition-all duration-500"
+									style="width: {progressPercent}%"
+								></div>
+							</div>
+							<div class="flex justify-between text-xs mt-2">
+								<span class="text-text-muted">{progressPercent}% to Level {level + 1}</span>
+								<span class="text-accent">{formatXp(xpToNextLevel(xp, level))} XP needed</span>
+							</div>
+						</div>
+					{:else}
+						<div class="mt-4 text-center">
+							<span class="text-amber-400 font-bold text-lg">MAX LEVEL REACHED</span>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Career Stats -->
+				<div class="card p-6">
+					<h2 class="font-pixel text-sm text-text-secondary mb-4">CAREER STATS</h2>
+					<div class="grid grid-cols-4 gap-4 text-center">
+						<div>
+							<div class="font-pixel text-2xl text-text-primary">{player.total_matches || 0}</div>
+							<div class="text-text-muted text-xs">MATCHES</div>
+						</div>
+						<div>
+							<div class="font-pixel text-2xl text-text-primary">{player.total_goals || 0}</div>
+							<div class="text-text-muted text-xs">GOALS</div>
+						</div>
+						<div>
+							<div class="font-pixel text-2xl text-text-primary">{player.total_assists || 0}</div>
+							<div class="text-text-muted text-xs">ASSISTS</div>
+						</div>
+						<div>
+							<div class="font-pixel text-2xl text-secondary">{player.total_wins || 0}</div>
+							<div class="text-text-muted text-xs">WINS</div>
+						</div>
+					</div>
+					{#if (player.total_matches || 0) > 0}
+						<div class="mt-4 pt-4 border-t border-border">
+							<div class="flex justify-between text-sm">
+								<span class="text-text-muted">Win Rate</span>
+								<span class="text-secondary font-semibold">
+									{Math.round(((player.total_wins || 0) / (player.total_matches || 1)) * 100)}%
+								</span>
+							</div>
+							<div class="flex justify-between text-sm mt-1">
+								<span class="text-text-muted">Goals per Match</span>
+								<span class="text-accent font-semibold">
+									{((player.total_goals || 0) / (player.total_matches || 1)).toFixed(2)}
+								</span>
+							</div>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Player DNA -->
+				{#if player.growth_ceiling && player.growth_rate}
+					<div class="card p-6">
+						<h2 class="font-pixel text-sm text-text-secondary mb-4">PLAYER DNA</h2>
+						<div class="grid grid-cols-2 gap-4">
+							<div>
+								<span class="text-text-muted text-xs">GROWTH CEILING</span>
+								<div class="font-pixel text-xl text-primary">{player.growth_ceiling}</div>
+								<p class="text-text-muted text-xs">Max stat potential</p>
+							</div>
+							<div>
+								<span class="text-text-muted text-xs">GROWTH RATE</span>
+								<div class="font-pixel text-xl {player.growth_rate >= 1.1 ? 'text-green-400' : player.growth_rate <= 0.9 ? 'text-red-400' : 'text-text-primary'}">
+									{player.growth_rate.toFixed(2)}x
+								</div>
+								<p class="text-text-muted text-xs">XP multiplier</p>
+							</div>
+						</div>
+						{#if player.generation > 1}
+							<div class="mt-4 pt-4 border-t border-border">
+								<span class="text-text-muted text-xs">GENERATION</span>
+								<div class="flex items-center gap-2 mt-1">
+									<span class="px-2 py-1 bg-purple-500 text-white rounded text-sm font-bold">GEN {player.generation}</span>
+									<span class="text-text-secondary text-sm">Bred from two Level 30+ players</span>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/if}
+
 				<!-- Stats -->
 				<div class="card p-6">
 					<div class="flex justify-between items-center mb-4">
@@ -174,6 +288,40 @@
 						<p class="text-text-secondary text-sm italic">"{player.celebration}"</p>
 					</div>
 				</div>
+
+				<!-- Level-Up History -->
+				{#if levelUps.length > 0}
+					<div class="card p-6">
+						<h2 class="font-pixel text-sm text-text-secondary mb-3">LEVEL-UP HISTORY</h2>
+						<div class="space-y-3 max-h-48 overflow-y-auto">
+							{#each levelUps.slice(0, 10) as levelUp}
+								<div class="flex items-center justify-between bg-black/20 rounded p-2">
+									<div class="flex items-center gap-3">
+										<div class="w-8 h-8 rounded bg-primary/20 flex items-center justify-center">
+											<span class="font-pixel text-primary text-sm">{levelUp.new_level}</span>
+										</div>
+										<div>
+											<span class="text-text-primary text-sm">Level {levelUp.old_level} → {levelUp.new_level}</span>
+											<div class="flex gap-2 text-xs text-green-400">
+												{#if levelUp.pace_increase > 0}<span>+{levelUp.pace_increase} PAC</span>{/if}
+												{#if levelUp.shooting_increase > 0}<span>+{levelUp.shooting_increase} SHO</span>{/if}
+												{#if levelUp.passing_increase > 0}<span>+{levelUp.passing_increase} PAS</span>{/if}
+												{#if levelUp.defense_increase > 0}<span>+{levelUp.defense_increase} DEF</span>{/if}
+												{#if levelUp.stamina_increase > 0}<span>+{levelUp.stamina_increase} STA</span>{/if}
+											</div>
+										</div>
+									</div>
+									<span class="text-text-muted text-xs">
+										{new Date(levelUp.created_at).toLocaleDateString()}
+									</span>
+								</div>
+							{/each}
+						</div>
+						{#if levelUps.length > 10}
+							<p class="text-text-muted text-xs text-center mt-2">Showing last 10 level-ups</p>
+						{/if}
+					</div>
+				{/if}
 
 				<!-- Provenance -->
 				{#if provenance.length > 0}

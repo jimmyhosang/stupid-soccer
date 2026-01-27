@@ -41,6 +41,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		coins: p.coins_exchanged
 	}));
 
+	// Fetch level-up history
+	const { data: levelUps } = await supabaseAdmin
+		.from('level_ups')
+		.select('*')
+		.eq('player_id', playerId)
+		.order('created_at', { ascending: false })
+		.limit(20);
+
 	// Check if current user is logged in
 	const session = await locals.getSession?.();
 	const currentUserId = session?.user?.id || null;
@@ -53,6 +61,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			ownerName: player.owner?.username || 'Unknown'
 		},
 		provenance: provenanceHistory,
+		levelUps: levelUps || [],
 		isOwner,
 		canTrade,
 		currentUserId

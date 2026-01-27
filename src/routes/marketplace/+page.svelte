@@ -3,6 +3,7 @@
 	import TradeOfferModal from '$lib/components/TradeOfferModal.svelte';
 	import type { Player } from '$lib/types/database';
 	import { supabase } from '$lib/stores/auth.svelte';
+	import { formatXp, getLevelTier, getLevelTierColor } from '$lib/xp';
 
 	// Get data from server load function
 	let { data } = $props();
@@ -22,7 +23,8 @@
 	let selectedPlayer = $state<(Player & { listPrice: number; sellerName: string }) | null>(null);
 	let searchQuery = $state('');
 	let filterRarity = $state<'all' | 'common' | 'rare' | 'legendary'>('all');
-	let sortBy = $state<'price-low' | 'price-high' | 'rating'>('price-low');
+	let filterMinLevel = $state(1);
+	let sortBy = $state<'price-low' | 'price-high' | 'rating' | 'level'>('price-low');
 	let showTradeModal = $state(false);
 
 	// Player provenance from server
@@ -47,6 +49,11 @@
 			result = result.filter((p) => p.rarity === filterRarity);
 		}
 
+		// Filter by minimum level
+		if (filterMinLevel > 1) {
+			result = result.filter((p) => (p.level || 1) >= filterMinLevel);
+		}
+
 		// Sort
 		switch (sortBy) {
 			case 'price-low':
@@ -61,6 +68,9 @@
 					const ratingB = (b.pace + b.shooting + b.passing + b.defense + b.stamina) / 5;
 					return ratingB - ratingA;
 				});
+				break;
+			case 'level':
+				result = [...result].sort((a, b) => (b.level || 1) - (a.level || 1));
 				break;
 		}
 
@@ -148,6 +158,18 @@
 
 	function calculateOverall(player: Player) {
 		return Math.round((player.pace + player.shooting + player.passing + player.defense + player.stamina) / 5);
+	}
+
+	function calculateTradeValue(player: Player): number {
+		const BASE_VALUE = 100;
+		const levelMultiplier = 1 + (player.level || 1) * 0.1;
+		const rarityMultiplier = player.rarity === 'legendary' ? 8 : player.rarity === 'rare' ? 2 : 1;
+		const avgStat = (player.pace + player.shooting + player.passing + player.defense + player.stamina) / 5;
+		const skillBonus = avgStat / 100;
+		const historyBonus = 1 + Math.min((player.total_matches || 0) * 0.001, 0.5);
+		const legacyBonus = 1 + Math.max((player.generation || 1) - 1, 0) * 0.05;
+
+		return Math.floor(BASE_VALUE * levelMultiplier * rarityMultiplier * skillBonus * historyBonus * legacyBonus);
 	}
 
 	function openTradeModal() {
@@ -253,6 +275,18 @@
 					{/each}
 				</div>
 
+				<!-- Level Filter -->
+				<div class="level-filter">
+					<label class="text-text-muted text-xs">MIN LVL</label>
+					<input
+						type="number"
+						bind:value={filterMinLevel}
+						min="1"
+						max="99"
+						class="level-input"
+					/>
+				</div>
+
 				<!-- Sort -->
 				<select
 					bind:value={sortBy}
@@ -261,6 +295,7 @@
 					<option value="price-low">Price: Low to High</option>
 					<option value="price-high">Price: High to Low</option>
 					<option value="rating">Rating: Best First</option>
+					<option value="level">Level: Highest First</option>
 				</select>
 			</div>
 		</div>
@@ -314,30 +349,79 @@
 						</div>
 
 						<div class="space-y-4">
-							<div class="flex justify-between">
+							<!-- Level & Price -->
+							<div class="grid grid-cols-3 gap-2 text-center bg-black/20 rounded-lg p-3">
+								<div>
+									<span class="text-text-muted text-xs">LEVEL</span>
+									<div class="font-pixel text-xl text-primary">{selectedPlayer.level || 1}</div>
+									<div class="text-[9px] {getLevelTierColor(selectedPlayer.level || 1)}">{getLevelTier(selectedPlayer.level || 1)}</div>
+								</div>
 								<div>
 									<span class="text-text-muted text-xs">OVERALL</span>
-									<div class="font-pixel text-2xl text-primary">{calculateOverall(selectedPlayer)}</div>
+									<div class="font-pixel text-xl text-text-primary">{calculateOverall(selectedPlayer)}</div>
+								</div>
+								<div>
+									<span class="text-text-muted text-xs">PRICE</span>
+									<div class="font-pixel text-xl text-accent">{selectedPlayer.listPrice}</div>
+								</div>
+							</div>
+
+							<!-- Trade Value Indicator -->
+							{@const tradeValue = calculateTradeValue(selectedPlayer)}
+							{@const priceDiff = selectedPlayer.listPrice - tradeValue}
+							<div class="flex justify-between items-center bg-black/20 rounded p-2">
+								<div>
+									<span class="text-text-muted text-xs">TRADE VALUE</span>
+									<div class="font-pixel text-lg text-secondary">{tradeValue}</div>
 								</div>
 								<div class="text-right">
-									<span class="text-text-muted text-xs">PRICE</span>
-									<div class="font-pixel text-2xl text-accent">{selectedPlayer.listPrice}</div>
+									<span class="text-text-muted text-xs">VS PRICE</span>
+									<div class="font-pixel text-sm {priceDiff > 0 ? 'text-red-400' : priceDiff < 0 ? 'text-green-400' : 'text-text-muted'}">
+										{priceDiff > 0 ? `+${priceDiff} overpriced` : priceDiff < 0 ? `${Math.abs(priceDiff)} below value` : 'Fair price'}
+									</div>
 								</div>
 							</div>
 
-							<div>
-								<span class="text-text-muted text-xs">SELLER</span>
-								<p class="text-text-secondary">@{selectedPlayer.sellerName}</p>
-							</div>
-
-							<div>
-								<span class="text-text-muted text-xs">RARITY</span>
-								<div class="inline-block mt-1 px-2 py-1 rounded text-xs font-bold uppercase
-									{selectedPlayer.rarity === 'legendary' ? 'bg-amber-400 text-amber-900' :
-									 selectedPlayer.rarity === 'rare' ? 'bg-blue-400 text-blue-900' :
-									 'bg-slate-400 text-slate-900'}">
-									{selectedPlayer.rarity}
+							<!-- Career Stats -->
+							{#if (selectedPlayer.total_matches || 0) > 0}
+								<div class="grid grid-cols-3 gap-2 text-center">
+									<div class="bg-black/20 rounded p-2">
+										<div class="font-pixel text-sm text-text-primary">{selectedPlayer.total_matches || 0}</div>
+										<div class="text-[9px] text-text-muted">MATCHES</div>
+									</div>
+									<div class="bg-black/20 rounded p-2">
+										<div class="font-pixel text-sm text-text-primary">{selectedPlayer.total_goals || 0}</div>
+										<div class="text-[9px] text-text-muted">GOALS</div>
+									</div>
+									<div class="bg-black/20 rounded p-2">
+										<div class="font-pixel text-sm text-secondary">{selectedPlayer.total_wins || 0}</div>
+										<div class="text-[9px] text-text-muted">WINS</div>
+									</div>
 								</div>
+							{/if}
+
+							<div class="flex gap-2">
+								<div>
+									<span class="text-text-muted text-xs">SELLER</span>
+									<p class="text-text-secondary text-sm">@{selectedPlayer.sellerName}</p>
+								</div>
+								<div>
+									<span class="text-text-muted text-xs">RARITY</span>
+									<div class="inline-block mt-1 px-2 py-1 rounded text-xs font-bold uppercase
+										{selectedPlayer.rarity === 'legendary' ? 'bg-amber-400 text-amber-900' :
+										 selectedPlayer.rarity === 'rare' ? 'bg-blue-400 text-blue-900' :
+										 'bg-slate-400 text-slate-900'}">
+										{selectedPlayer.rarity}
+									</div>
+								</div>
+								{#if selectedPlayer.generation > 1}
+									<div>
+										<span class="text-text-muted text-xs">GEN</span>
+										<div class="inline-block mt-1 px-2 py-1 rounded text-xs font-bold bg-purple-500 text-white">
+											{selectedPlayer.generation}
+										</div>
+									</div>
+								{/if}
 							</div>
 
 							<div>
@@ -673,6 +757,28 @@
 	}
 
 	.sort-select:focus {
+		outline: none;
+		border-color: var(--color-primary);
+	}
+
+	.level-filter {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.level-input {
+		width: 4rem;
+		padding: 0.5rem;
+		background-color: var(--color-background);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		color: var(--color-text-primary);
+		font-size: 1rem;
+		text-align: center;
+	}
+
+	.level-input:focus {
 		outline: none;
 		border-color: var(--color-primary);
 	}

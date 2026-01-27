@@ -33,6 +33,24 @@ export interface Player {
   list_price: number | null;
   is_starter: boolean;
   created_at: string;
+  // XP Progression System
+  level: number;
+  xp: number;
+  total_matches: number;
+  total_goals: number;
+  total_assists: number;
+  total_wins: number;
+  // DNA System
+  growth_ceiling: number;
+  growth_rate: number;
+  // Bloodline
+  parent1_id: string | null;
+  parent2_id: string | null;
+  generation: number;
+  breeding_cooldown: string | null;
+  // Legacy
+  is_retired: boolean;
+  retired_at: string | null;
 }
 
 export interface SpriteConfig {
@@ -85,8 +103,58 @@ export interface Match {
   user_score: number;
   ai_score: number;
   coins_earned: number;
+  total_xp_earned: number;
   squad_snapshot: object | null;
   played_at: string;
+}
+
+export interface MatchPerformance {
+  id: string;
+  match_id: string;
+  player_id: string;
+  user_id: string;
+  goals: number;
+  assists: number;
+  xp_earned: number;
+  level_before: number;
+  level_after: number;
+  created_at: string;
+}
+
+export interface LevelUp {
+  id: string;
+  player_id: string;
+  user_id: string;
+  old_level: number;
+  new_level: number;
+  pace_increase: number;
+  shooting_increase: number;
+  passing_increase: number;
+  defense_increase: number;
+  stamina_increase: number;
+  triggered_by_match: string | null;
+  created_at: string;
+}
+
+export interface BloodlineRegistry {
+  id: string;
+  parent1_id: string;
+  parent2_id: string;
+  offspring_id: string;
+  inherited_traits: Record<string, unknown>;
+  mutation_occurred: boolean;
+  created_at: string;
+}
+
+export interface LegacyMonument {
+  id: string;
+  player_id: string;
+  owner_id: string;
+  monument_type: 'statue' | 'mural' | 'banner';
+  bonus_type: 'xp_boost' | 'coin_boost' | 'luck_boost';
+  bonus_value: number;
+  career_stats: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface PackType {
