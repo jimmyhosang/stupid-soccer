@@ -17,11 +17,11 @@
 	const navLinks = [
 		{ href: '/play', label: 'PLAY' },
 		{ href: '/squad', label: 'SQUAD' },
+		{ href: '/packs', label: 'PACKS' },
 		{ href: '/scout', label: 'SCOUT' },
 		{ href: '/marketplace', label: 'MARKET' },
 		{ href: '/challenges', label: 'CHALLENGES' },
-		{ href: '/leaderboard', label: 'RANKS' },
-		{ href: '/pvp', label: 'PVP' }
+		{ href: '/leaderboard', label: 'RANKS' }
 	];
 
 	function toggleMobileMenu() {

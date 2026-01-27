@@ -14,8 +14,8 @@
 		auth.init();
 	});
 
-	// Pages where we don't show the header (landing, auth pages, game page)
-	const noHeaderPages = ['/', '/login', '/signup', '/auth/callback', '/play'];
+	// Pages where we don't show the header (landing, auth pages only)
+	const noHeaderPages = ['/', '/login', '/signup', '/auth/callback'];
 	const showHeader = $derived(!noHeaderPages.includes($page.url.pathname));
 </script>
 
