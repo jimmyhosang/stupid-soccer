@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { supabaseAdmin } from '$lib/server/supabase';
+import { supabaseAdmin, isGuestMode, getGuestUser } from '$lib/server/supabase';
 import {
 	calculatePlayerMatchXp,
 	levelFromXp,
@@ -33,7 +33,37 @@ interface MatchSaveRequest {
 }
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
-	// Get auth token from cookies
+	// Check for guest mode first
+	const guestUser = getGuestUser(cookies);
+
+	// If guest mode and guest user found, handle without database
+	if (isGuestMode && guestUser) {
+		const body: MatchSaveRequest = await request.json();
+		const { difficulty, userScore, aiScore } = body;
+
+		// Validate input
+		if (!['easy', 'medium', 'hard'].includes(difficulty)) {
+			throw error(400, 'Invalid difficulty');
+		}
+
+		// Calculate coin reward (simulated for guest)
+		const matchResult = userScore > aiScore ? 'win' : userScore === aiScore ? 'draw' : 'loss';
+		const baseCoins = matchResult === 'win' ? BASE_REWARDS.win : matchResult === 'draw' ? BASE_REWARDS.draw : BASE_REWARDS.loss;
+		const coinsEarned = baseCoins + (userScore * COINS_PER_GOAL);
+
+		// Return simulated result without database operations
+		return json({
+			matchId: `guest-match-${Date.now()}`,
+			coinsEarned,
+			totalXpEarned: 50, // Simulated XP
+			xpResults: [],
+			levelUps: [],
+			newCoinBalance: 1000 + coinsEarned, // Simulated balance
+			guestMode: true
+		});
+	}
+
+	// Regular auth flow
 	const accessToken = cookies.get('sb-access-token');
 	if (!accessToken) {
 		throw error(401, 'Not authenticated');

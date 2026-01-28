@@ -25,6 +25,7 @@
 			isAuthenticated={auth.isAuthenticated}
 			username={auth.profile?.username || ''}
 			coins={auth.profile?.coins || 0}
+			isGuestMode={auth.isGuestMode}
 		/>
 	{/if}
 	{@render children()}

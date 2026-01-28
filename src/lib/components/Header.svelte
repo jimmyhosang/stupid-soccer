@@ -6,11 +6,13 @@
 		username?: string;
 		coins?: number;
 		subscriptionTier?: 'free' | 'manager_club';
+		isGuestMode?: boolean;
 	}
 
-	let { isAuthenticated = false, username = '', coins = 0, subscriptionTier = 'free' }: Props = $props();
+	let { isAuthenticated = false, username = '', coins = 0, subscriptionTier = 'free', isGuestMode = false }: Props = $props();
 
 	const isManagerClub = $derived(subscriptionTier === 'manager_club');
+	const showAsLoggedIn = $derived(isAuthenticated || isGuestMode);
 
 	let mobileMenuOpen = $state(false);
 
@@ -54,18 +56,25 @@
 
 			<!-- Right Side -->
 			<div class="hidden md:flex items-center gap-4">
-				{#if isAuthenticated}
+				{#if showAsLoggedIn}
 					<div class="flex items-center gap-2 text-sm">
 						<span class="text-accent font-pixel">{coins.toLocaleString()}</span>
 						<span class="text-text-muted">coins</span>
 					</div>
 					<div class="h-4 w-px bg-border"></div>
-					<a href="/profile" class="flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm">
-						{#if isManagerClub}
-							<span class="manager-badge" title="Manager Club Member">👑</span>
-						{/if}
-						@{username}
-					</a>
+					{#if isGuestMode}
+						<span class="flex items-center gap-2 text-text-secondary text-sm">
+							<span class="guest-badge" title="Playing as Guest">🎮</span>
+							{username || 'Guest'}
+						</span>
+					{:else}
+						<a href="/profile" class="flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm">
+							{#if isManagerClub}
+								<span class="manager-badge" title="Manager Club Member">👑</span>
+							{/if}
+							@{username}
+						</a>
+					{/if}
 				{:else}
 					<a href="/login" class="text-text-secondary hover:text-text-primary text-sm">
 						Sign In
@@ -113,19 +122,26 @@
 
 					<div class="h-px bg-border my-2"></div>
 
-					{#if isAuthenticated}
+					{#if showAsLoggedIn}
 						<div class="flex items-center justify-between py-2">
 							<span class="flex items-center gap-2 text-text-secondary text-sm">
-								{#if isManagerClub}
-									<span class="manager-badge" title="Manager Club Member">👑</span>
+								{#if isGuestMode}
+									<span class="guest-badge" title="Playing as Guest">🎮</span>
+									{username || 'Guest'}
+								{:else}
+									{#if isManagerClub}
+										<span class="manager-badge" title="Manager Club Member">👑</span>
+									{/if}
+									@{username}
 								{/if}
-								@{username}
 							</span>
 							<span class="text-accent font-pixel text-sm">{coins.toLocaleString()} coins</span>
 						</div>
-						<a href="/profile" class="btn btn-secondary w-full">
-							Profile
-						</a>
+						{#if !isGuestMode}
+							<a href="/profile" class="btn btn-secondary w-full">
+								Profile
+							</a>
+						{/if}
 					{:else}
 						<a href="/login" class="btn btn-secondary w-full">
 							Sign In

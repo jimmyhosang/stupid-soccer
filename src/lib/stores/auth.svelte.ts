@@ -6,6 +6,31 @@ import { browser } from '$app/environment';
 const supabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.PUBLIC_SUPABASE_ANON_KEY || '';
 
+// Guest mode - disable auth for free play
+const disableAuth = import.meta.env.PUBLIC_DISABLE_AUTH === 'true';
+
+// Generate or retrieve guest ID from localStorage
+function getGuestId(): string {
+	if (!browser) return 'guest-server';
+	let guestId = localStorage.getItem('guest-user-id');
+	if (!guestId) {
+		guestId = `guest-${Math.random().toString(36).substring(2, 10)}`;
+		localStorage.setItem('guest-user-id', guestId);
+	}
+	return guestId;
+}
+
+// Generate guest username
+function getGuestUsername(): string {
+	if (!browser) return 'Guest';
+	let username = localStorage.getItem('guest-username');
+	if (!username) {
+		username = `Player${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`;
+		localStorage.setItem('guest-username', username);
+	}
+	return username;
+}
+
 // Browser-side Supabase client (may be null if not configured)
 export const supabase: SupabaseClient | null =
 	supabaseUrl && supabaseAnonKey
@@ -38,6 +63,44 @@ export function createAuthState() {
 	// Initialize auth state
 	async function init() {
 		loading = true;
+
+		// Guest mode - create fake authenticated state
+		if (disableAuth) {
+			const guestId = getGuestId();
+			const guestUsername = getGuestUsername();
+
+			// Create a mock user object
+			user = {
+				id: guestId,
+				email: `${guestId}@guest.local`,
+				aud: 'authenticated',
+				role: 'authenticated',
+				created_at: new Date().toISOString()
+			} as User;
+
+			// Create a mock profile
+			profile = {
+				id: guestId,
+				username: guestUsername,
+				coins: 1000, // Start with coins for free play
+				subscription_tier: 'free',
+				subscription_expires_at: null,
+				ai_scout_uses_this_month: 0,
+				ai_scout_reset_at: new Date().toISOString(),
+				stripe_customer_id: null,
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString()
+			} as Profile;
+
+			// Set guest cookie for server-side
+			if (browser) {
+				document.cookie = `guest-mode=true; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+				document.cookie = `guest-user-id=${guestId}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+			}
+
+			loading = false;
+			return;
+		}
 
 		// If Supabase is not configured, just mark as not loading
 		if (!supabase) {
@@ -145,6 +208,9 @@ export function createAuthState() {
 		get isAuthenticated() {
 			return !!user;
 		},
+		get isGuestMode() {
+			return disableAuth;
+		},
 		init,
 		signInWithGoogle,
 		signInWithEmail,
@@ -153,3 +219,6 @@ export function createAuthState() {
 		fetchProfile
 	};
 }
+
+// Export for use in other modules
+export const isGuestModeEnabled = disableAuth;

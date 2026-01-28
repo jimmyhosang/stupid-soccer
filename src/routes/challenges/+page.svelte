@@ -157,13 +157,13 @@
 </svelte:head>
 
 <main class="min-h-screen py-8 px-4">
-	<div class="max-w-2xl mx-auto">
+	<div class="w-full max-w-2xl mx-auto">
 		<!-- Header -->
-		<div class="text-center mb-8">
+		<div class="text-center mb-8 w-full">
 			<h1 class="font-pixel text-2xl text-text-primary mb-2">
 				<span class="text-accent">DAILY</span> CHALLENGES
 			</h1>
-			<p class="text-text-secondary">Complete challenges to earn bonus coins!</p>
+			<p class="text-text-secondary whitespace-normal">Complete challenges to earn bonus coins!</p>
 
 			<!-- Streak Display -->
 			<div class="mt-4 flex flex-wrap justify-center gap-3">

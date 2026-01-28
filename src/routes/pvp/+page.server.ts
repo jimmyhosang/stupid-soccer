@@ -1,7 +1,22 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { isGuestMode, getGuestUser } from '$lib/server/supabase';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, cookies }) => {
+	// Check for guest mode
+	const guestUser = getGuestUser(cookies);
+	if (isGuestMode && guestUser) {
+		// Return mock data for guest mode - PvP not available for guests
+		return {
+			league: null,
+			userEntry: null,
+			standings: [],
+			recentMatches: [],
+			hasValidSquad: false,
+			isGuestMode: true
+		};
+	}
+
 	const session = await locals.getSession();
 
 	if (!session) {

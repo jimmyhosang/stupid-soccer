@@ -367,20 +367,22 @@
 							</div>
 
 							<!-- Trade Value Indicator -->
-							{@const tradeValue = calculateTradeValue(selectedPlayer)}
-							{@const priceDiff = selectedPlayer.listPrice - tradeValue}
-							<div class="flex justify-between items-center bg-black/20 rounded p-2">
-								<div>
-									<span class="text-text-muted text-xs">TRADE VALUE</span>
-									<div class="font-pixel text-lg text-secondary">{tradeValue}</div>
-								</div>
-								<div class="text-right">
-									<span class="text-text-muted text-xs">VS PRICE</span>
-									<div class="font-pixel text-sm {priceDiff > 0 ? 'text-red-400' : priceDiff < 0 ? 'text-green-400' : 'text-text-muted'}">
-										{priceDiff > 0 ? `+${priceDiff} overpriced` : priceDiff < 0 ? `${Math.abs(priceDiff)} below value` : 'Fair price'}
+							{#if selectedPlayer}
+								{@const tradeValue = calculateTradeValue(selectedPlayer)}
+								{@const priceDiff = selectedPlayer.listPrice - tradeValue}
+								<div class="flex justify-between items-center bg-black/20 rounded p-2">
+									<div>
+										<span class="text-text-muted text-xs">TRADE VALUE</span>
+										<div class="font-pixel text-lg text-secondary">{tradeValue}</div>
+									</div>
+									<div class="text-right">
+										<span class="text-text-muted text-xs">VS PRICE</span>
+										<div class="font-pixel text-sm {priceDiff > 0 ? 'text-red-400' : priceDiff < 0 ? 'text-green-400' : 'text-text-muted'}">
+											{priceDiff > 0 ? `+${priceDiff} overpriced` : priceDiff < 0 ? `${Math.abs(priceDiff)} below value` : 'Fair price'}
+										</div>
 									</div>
 								</div>
-							</div>
+							{/if}
 
 							<!-- Career Stats -->
 							{#if (selectedPlayer.total_matches || 0) > 0}
