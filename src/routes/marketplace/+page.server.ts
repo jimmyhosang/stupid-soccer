@@ -1,14 +1,36 @@
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { isGuestMode, getGuestUser } from '$lib/server/supabase';
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const session = await locals.getSession();
-
-	if (!session) {
-		throw redirect(303, '/login?redirect=/marketplace');
+export const load: PageServerLoad = async ({ locals, cookies }) => {
+	// Check for guest mode
+	const guestUser = getGuestUser(cookies);
+	if (isGuestMode && guestUser) {
+		return {
+			profile: {
+				id: guestUser.id,
+				coins: 1000,
+				username: guestUser.username
+			},
+			listedPlayers: [],
+			myPlayers: [],
+			pendingTrades: [],
+			playerProvenance: {},
+			isGuestMode: true
+		};
 	}
 
-	const userId = session.user.id;
+	const session = await locals.getSession();
+	const userId = session?.user?.id;
+
+	if (!userId) {
+		return {
+			profile: { id: '', coins: 0, username: 'Guest' },
+			listedPlayers: [],
+			myPlayers: [],
+			pendingTrades: [],
+			playerProvenance: {}
+		};
+	}
 
 	// Fetch user's profile (for coins)
 	const { data: profile } = await locals.supabase

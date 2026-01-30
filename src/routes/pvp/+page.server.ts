@@ -1,4 +1,3 @@
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { isGuestMode, getGuestUser } from '$lib/server/supabase';
 
@@ -18,12 +17,17 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 	}
 
 	const session = await locals.getSession();
+	const userId = session?.user?.id;
 
-	if (!session) {
-		throw redirect(303, '/login?redirect=/pvp');
+	if (!userId) {
+		return {
+			league: null,
+			userEntry: null,
+			standings: [],
+			recentMatches: [],
+			hasValidSquad: false
+		};
 	}
-
-	const userId = session.user.id;
 
 	// Get or create current league
 	const { data: league, error: leagueError } = await locals.supabase.rpc(

@@ -1,4 +1,3 @@
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { isGuestMode, getGuestUser } from '$lib/server/supabase';
 
@@ -20,12 +19,15 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 	}
 
 	const session = await locals.getSession();
+	const userId = session?.user?.id;
 
-	if (!session) {
-		throw redirect(303, '/login?redirect=/squad');
+	if (!userId) {
+		return {
+			profile: { id: '', coins: 0, username: 'Guest' },
+			players: [],
+			squad: []
+		};
 	}
-
-	const userId = session.user.id;
 
 	// Fetch user's profile (for coins)
 	const { data: profile } = await locals.supabase

@@ -1,14 +1,48 @@
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
+import { isGuestMode, getGuestUser } from '$lib/server/supabase';
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const session = await locals.getSession();
-
-	if (!session) {
-		throw redirect(303, '/login?redirect=/profile');
+export const load: PageServerLoad = async ({ locals, cookies }) => {
+	// Check for guest mode
+	const guestUser = getGuestUser(cookies);
+	if (isGuestMode && guestUser) {
+		return {
+			profile: {
+				id: guestUser.id,
+				username: guestUser.username,
+				coins: 1000,
+				subscription_tier: 'free',
+				ai_scout_uses_this_month: 0
+			},
+			stats: {
+				playerCount: 0,
+				wins: 0,
+				losses: 0,
+				matchesPlayed: 0
+			},
+			isGuestMode: true
+		};
 	}
 
-	const userId = session.user.id;
+	const session = await locals.getSession();
+	const userId = session?.user?.id;
+
+	if (!userId) {
+		return {
+			profile: {
+				id: '',
+				username: 'Guest',
+				coins: 1000,
+				subscription_tier: 'free',
+				ai_scout_uses_this_month: 0
+			},
+			stats: {
+				playerCount: 0,
+				wins: 0,
+				losses: 0,
+				matchesPlayed: 0
+			}
+		};
+	}
 
 	// Fetch user's profile
 	const { data: profile, error } = await locals.supabase

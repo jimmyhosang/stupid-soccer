@@ -1,5 +1,6 @@
-import { redirect, fail } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
+import { isGuestMode, getGuestUser } from '$lib/server/supabase';
 
 interface PackType {
 	id: string;
@@ -68,14 +69,52 @@ const hairStyles = ['spiky', 'mohawk', 'bald', 'long', 'short', 'afro'];
 const skinTones = ['light', 'medium', 'dark', 'tan'];
 const faceStyles = ['happy', 'serious', 'determined', 'calm'];
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const session = await locals.getSession();
-
-	if (!session) {
-		throw redirect(303, '/login?redirect=/packs');
+export const load: PageServerLoad = async ({ locals, cookies }) => {
+	// Check for guest mode
+	const guestUser = getGuestUser(cookies);
+	if (isGuestMode && guestUser) {
+		// Return mock pack types for guest mode
+		return {
+			profile: {
+				id: guestUser.id,
+				coins: 1000,
+				username: guestUser.username
+			},
+			packTypes: [
+				{
+					id: 'starter',
+					name: 'Starter Pack',
+					description: 'A basic pack with 3 players',
+					price: 100,
+					player_count: 3,
+					rarity_weights: { common: 80, rare: 18, legendary: 2 }
+				},
+				{
+					id: 'premium',
+					name: 'Premium Pack',
+					description: 'Better odds with 5 players',
+					price: 300,
+					player_count: 5,
+					rarity_weights: { common: 60, rare: 30, legendary: 10 }
+				}
+			],
+			recentPurchases: [],
+			totalPurchases: 0,
+			isGuestMode: true
+		};
 	}
 
-	const userId = session.user.id;
+	const session = await locals.getSession();
+	const userId = session?.user?.id;
+
+	if (!userId) {
+		return {
+			profile: { id: '', coins: 0, username: 'Guest' },
+			packTypes: [],
+			recentPurchases: [],
+			totalPurchases: 0
+		};
+	}
 
 	// Fetch user's profile
 	const { data: profile } = await locals.supabase

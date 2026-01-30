@@ -1,14 +1,30 @@
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { isGuestMode, getGuestUser } from '$lib/server/supabase';
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const session = await locals.getSession();
-
-	if (!session) {
-		throw redirect(303, '/login?redirect=/scout');
+export const load: PageServerLoad = async ({ locals, cookies }) => {
+	// Check for guest mode
+	const guestUser = getGuestUser(cookies);
+	if (isGuestMode && guestUser) {
+		return {
+			profile: {
+				usesRemaining: 'Unlimited',
+				subscriptionTier: 'free'
+			},
+			isGuestMode: true
+		};
 	}
 
-	const userId = session.user.id;
+	const session = await locals.getSession();
+	const userId = session?.user?.id;
+
+	if (!userId) {
+		return {
+			profile: {
+				usesRemaining: 'Unlimited',
+				subscriptionTier: 'free'
+			}
+		};
+	}
 
 	// Fetch user's profile (for scout usage info)
 	const { data: profile } = await locals.supabase

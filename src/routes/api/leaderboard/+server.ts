@@ -1,12 +1,22 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { supabaseAdmin } from '$lib/server/supabase';
+import { supabaseAdmin, isGuestMode } from '$lib/server/supabase';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {
 	const period = url.searchParams.get('period') || 'weekly';
 
 	if (!['weekly', 'monthly', 'alltime'].includes(period)) {
 		throw error(400, 'Invalid period. Use: weekly, monthly, or alltime');
+	}
+
+	// In guest mode or if database views don't exist, return empty leaderboard
+	if (isGuestMode) {
+		return json({
+			period,
+			leaderboard: [],
+			userRank: null,
+			isGuestMode: true
+		});
 	}
 
 	// Get leaderboard data
@@ -18,7 +28,12 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	if (leaderboardError) {
 		console.error('Failed to fetch leaderboard:', leaderboardError);
-		throw error(500, 'Failed to fetch leaderboard');
+		// Return empty leaderboard instead of erroring
+		return json({
+			period,
+			leaderboard: [],
+			userRank: null
+		});
 	}
 
 	// Check if user is logged in and get their rank

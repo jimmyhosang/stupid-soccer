@@ -221,9 +221,9 @@
 			</div>
 
 			<div class="text-center mt-12">
-				<p class="text-text-muted mb-4">Free players get 1 AI Scout use per month</p>
-				<a href="/signup" class="btn btn-primary">
-					TRY AI SCOUT FREE
+				<p class="text-text-muted mb-4">Try the AI Scout - it's free!</p>
+				<a href="/scout" class="btn btn-primary">
+					TRY AI SCOUT
 				</a>
 			</div>
 		</div>
@@ -361,12 +361,12 @@
 				Join thousands of players who've ditched pay-to-win games for something actually fun.
 			</p>
 
-			<a href="/signup" class="btn btn-primary text-lg px-12 py-4 mb-4 inline-block">
-				START PLAYING FREE
+			<a href="/play" class="btn btn-primary text-lg px-12 py-4 mb-4 inline-block">
+				PLAY NOW - IT'S FREE
 			</a>
 
 			<p class="cta-note">
-				No credit card required. No hidden fees. Just football.
+				No account required. No hidden fees. Just football.
 			</p>
 		</div>
 	</section>

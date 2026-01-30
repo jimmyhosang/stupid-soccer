@@ -56,33 +56,15 @@
 
 			<!-- Right Side -->
 			<div class="hidden md:flex items-center gap-4">
-				{#if showAsLoggedIn}
-					<div class="flex items-center gap-2 text-sm">
-						<span class="text-accent font-pixel">{coins.toLocaleString()}</span>
-						<span class="text-text-muted">coins</span>
-					</div>
-					<div class="h-4 w-px bg-border"></div>
-					{#if isGuestMode}
-						<span class="flex items-center gap-2 text-text-secondary text-sm">
-							<span class="guest-badge" title="Playing as Guest">🎮</span>
-							{username || 'Guest'}
-						</span>
-					{:else}
-						<a href="/profile" class="flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm">
-							{#if isManagerClub}
-								<span class="manager-badge" title="Manager Club Member">👑</span>
-							{/if}
-							@{username}
-						</a>
-					{/if}
-				{:else}
-					<a href="/login" class="text-text-secondary hover:text-text-primary text-sm">
-						Sign In
-					</a>
-					<a href="/signup" class="btn btn-primary text-sm h-9 px-4">
-						Sign Up
-					</a>
-				{/if}
+				<div class="flex items-center gap-2 text-sm">
+					<span class="text-accent font-pixel">{coins.toLocaleString()}</span>
+					<span class="text-text-muted">coins</span>
+				</div>
+				<div class="h-4 w-px bg-border"></div>
+				<span class="flex items-center gap-2 text-text-secondary text-sm">
+					<span class="guest-badge" title="Free Play">🎮</span>
+					{username || 'Player'}
+				</span>
 			</div>
 
 			<!-- Mobile Menu Button -->
@@ -122,34 +104,13 @@
 
 					<div class="h-px bg-border my-2"></div>
 
-					{#if showAsLoggedIn}
-						<div class="flex items-center justify-between py-2">
-							<span class="flex items-center gap-2 text-text-secondary text-sm">
-								{#if isGuestMode}
-									<span class="guest-badge" title="Playing as Guest">🎮</span>
-									{username || 'Guest'}
-								{:else}
-									{#if isManagerClub}
-										<span class="manager-badge" title="Manager Club Member">👑</span>
-									{/if}
-									@{username}
-								{/if}
-							</span>
-							<span class="text-accent font-pixel text-sm">{coins.toLocaleString()} coins</span>
-						</div>
-						{#if !isGuestMode}
-							<a href="/profile" class="btn btn-secondary w-full">
-								Profile
-							</a>
-						{/if}
-					{:else}
-						<a href="/login" class="btn btn-secondary w-full">
-							Sign In
-						</a>
-						<a href="/signup" class="btn btn-primary w-full">
-							Sign Up
-						</a>
-					{/if}
+					<div class="flex items-center justify-between py-2">
+						<span class="flex items-center gap-2 text-text-secondary text-sm">
+							<span class="guest-badge" title="Free Play">🎮</span>
+							{username || 'Player'}
+						</span>
+						<span class="text-accent font-pixel text-sm">{coins.toLocaleString()} coins</span>
+					</div>
 				</div>
 			</nav>
 		{/if}

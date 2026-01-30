@@ -204,11 +204,7 @@
 		{:else if error}
 			<div class="card p-8 text-center">
 				<p class="text-text-muted mb-4">{error}</p>
-				{#if error.includes('sign in')}
-					<a href="/login?redirect=/challenges" class="btn btn-primary">Sign In</a>
-				{:else}
-					<button onclick={loadChallenges} class="btn btn-secondary">Try Again</button>
-				{/if}
+				<button onclick={loadChallenges} class="btn btn-secondary">Try Again</button>
 			</div>
 		{:else if challenges.length === 0}
 			<div class="card p-8 text-center">
