@@ -2,12 +2,21 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { supabaseAdmin } from '$lib/server/supabase';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY } from '$env/static/private';
-import { PUBLIC_APP_URL } from '$env/static/public';
+import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-	apiVersion: '2025-12-15.clover'
-});
+const STRIPE_SECRET_KEY = privateEnv.STRIPE_SECRET_KEY ?? '';
+const PUBLIC_APP_URL = publicEnv.PUBLIC_APP_URL ?? '';
+
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+	if (!_stripe) {
+		_stripe = new Stripe(STRIPE_SECRET_KEY, {
+			apiVersion: '2025-12-15.clover'
+		});
+	}
+	return _stripe;
+}
 
 export const POST: RequestHandler = async ({ cookies }) => {
 	const accessToken = cookies.get('sb-access-token');
@@ -32,7 +41,7 @@ export const POST: RequestHandler = async ({ cookies }) => {
 	}
 
 	// Create billing portal session
-	const session = await stripe.billingPortal.sessions.create({
+	const session = await getStripe().billingPortal.sessions.create({
 		customer: profile.stripe_customer_id,
 		return_url: `${PUBLIC_APP_URL}/profile`
 	});
