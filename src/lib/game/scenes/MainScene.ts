@@ -837,7 +837,12 @@ export class MainScene extends Phaser.Scene {
 		// Notify the UI
 		const onGameEnd = this.registry.get('onGameEnd');
 		if (onGameEnd) {
-			onGameEnd({ playerScore: this.playerScore, aiScore: this.aiScore });
+			onGameEnd({
+				playerScore: this.playerScore,
+				aiScore: this.aiScore,
+				stats: { ...this.stats },
+				possession: this.calculatePossession()
+			});
 		}
 	}
 

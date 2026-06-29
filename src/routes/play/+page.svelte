@@ -26,6 +26,15 @@
 	let isMobile = $state(false);
 	let isLoggedIn = $state(false);
 
+	// Match stats surfaced on the full-time result card
+	let matchStats = $state<{
+		playerShots: number;
+		aiShots: number;
+		playerPasses: number;
+		aiPasses: number;
+	} | null>(null);
+	let matchPossession = $state<{ player: number; ai: number } | null>(null);
+
 	// Format time as M:SS
 	function formatTime(seconds: number): string {
 		const mins = Math.floor(seconds / 60);
@@ -153,6 +162,17 @@
 					playerScore = result.playerScore;
 					aiScore = result.aiScore;
 
+					// Capture match stats for the result card
+					if (result.stats) {
+						matchStats = {
+							playerShots: result.stats.playerShots,
+							aiShots: result.stats.aiShots,
+							playerPasses: result.stats.playerPasses,
+							aiPasses: result.stats.aiPasses
+						};
+					}
+					matchPossession = result.possession ?? null;
+
 					// Award coins!
 					if (!coinsAwarded) {
 						resumeAudio();
@@ -174,6 +194,8 @@
 		gameTime = 180; // Reset timer to 3 minutes
 		coinsAwarded = false;
 		coinsEarned = 0;
+		matchStats = null;
+		matchPossession = null;
 
 		// Wait for DOM to update, then trigger game creation
 		await tick();
@@ -366,6 +388,43 @@
 							<span class="balance-label">New Balance:</span>
 							<span class="balance-value">{formatCoins(currentCoins)}</span>
 						</div>
+						{#if matchStats && matchPossession}
+							<div class="match-stats">
+								<div class="ms-possession">
+									<div class="ms-possession-labels">
+										<span class="ms-team-you">YOU {matchPossession.player}%</span>
+										<span class="ms-team-ai">{matchPossession.ai}% AI</span>
+									</div>
+									<div class="ms-possession-bar">
+										<div
+											class="ms-possession-fill ms-fill-you"
+											style="width: {matchPossession.player}%"
+										></div>
+										<div
+											class="ms-possession-fill ms-fill-ai"
+											style="width: {matchPossession.ai}%"
+										></div>
+									</div>
+								</div>
+								<div class="ms-table">
+									<div class="ms-row">
+										<span class="ms-value ms-value-you">{matchStats.playerShots}</span>
+										<span class="ms-label">Shots</span>
+										<span class="ms-value ms-value-ai">{matchStats.aiShots}</span>
+									</div>
+									<div class="ms-row">
+										<span class="ms-value ms-value-you">{matchStats.playerPasses}</span>
+										<span class="ms-label">Passes</span>
+										<span class="ms-value ms-value-ai">{matchStats.aiPasses}</span>
+									</div>
+									<div class="ms-row">
+										<span class="ms-value ms-value-you">{matchPossession.player}%</span>
+										<span class="ms-label">Possession</span>
+										<span class="ms-value ms-value-ai">{matchPossession.ai}%</span>
+									</div>
+								</div>
+							</div>
+						{/if}
 						<div class="result-buttons">
 							<button onclick={restartGame} class="btn-secondary">PLAY AGAIN</button>
 							<a href="/squad" class="btn-primary">VIEW SQUAD</a>
@@ -894,5 +953,91 @@
 
 	.btn-secondary:hover {
 		background-color: var(--color-surface-hover);
+	}
+
+	/* Match stats on the full-time card */
+	.match-stats {
+		margin-bottom: 1.5rem;
+		padding: 1rem;
+		background-color: var(--color-background);
+		border-radius: 8px;
+		text-align: left;
+	}
+
+	.ms-possession {
+		margin-bottom: 1rem;
+	}
+
+	.ms-possession-labels {
+		display: flex;
+		justify-content: space-between;
+		font-family: var(--font-pixel);
+		font-size: 0.625rem;
+		margin-bottom: 0.375rem;
+	}
+
+	.ms-team-you {
+		color: var(--color-primary);
+	}
+
+	.ms-team-ai {
+		color: #ef4444;
+	}
+
+	.ms-possession-bar {
+		display: flex;
+		width: 100%;
+		height: 12px;
+		border-radius: 6px;
+		overflow: hidden;
+		background-color: var(--color-border);
+	}
+
+	.ms-possession-fill {
+		height: 100%;
+	}
+
+	.ms-fill-you {
+		background-color: var(--color-primary);
+	}
+
+	.ms-fill-ai {
+		background-color: #ef4444;
+	}
+
+	.ms-table {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.ms-row {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.ms-value {
+		font-family: var(--font-pixel);
+		font-size: 1rem;
+	}
+
+	.ms-value-you {
+		text-align: left;
+		color: var(--color-primary);
+	}
+
+	.ms-value-ai {
+		text-align: right;
+		color: #ef4444;
+	}
+
+	.ms-label {
+		text-align: center;
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 </style>
