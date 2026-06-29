@@ -60,8 +60,17 @@ export class MainScene extends Phaser.Scene {
 		playerPossessionFrames: 0,
 		aiPossessionFrames: 0,
 		playerPasses: 0,
-		aiPasses: 0
+		aiPasses: 0,
+		playerTackles: 0,
+		aiTackles: 0
 	};
+
+	// Tackling
+	private readonly TACKLE_RADIUS = 24; // px - how close a tackler must be to the carrier
+	private readonly TACKLE_COOLDOWN = 600; // ms - cooldown after any tackle attempt (success or fail)
+	private readonly PLAYER_TACKLE_CHANCE = 0.6; // success probability for a human tackle attempt
+	private readonly TACKLE_PROTECT_TIME = 200; // ms - carrier is immune right after gaining possession
+	private lastTackleTime = new Map<PlayerSprite, number>(); // per-tackler cooldown
 
 	// Overlay elements
 	private overlayBg!: Phaser.GameObjects.Rectangle;
@@ -374,26 +383,12 @@ export class MainScene extends Phaser.Scene {
 		});
 
 		this.physics.add.overlap(this.ball, this.aiTeam, (ball, player) => {
+			// AI only gains possession of a LOOSE ball here; active steals from a
+			// human carrier are handled by the aggression-scaled tackle in updateAI().
 			if (!this.ballCarrier) {
 				this.ballCarrier = player as PlayerSprite;
 				this.lastKicker = 'ai';
 				this.possessionStartTime = this.time.now;
-			} else if (this.ballCarrier.isAI === false) {
-				// AI tackle - 20% chance, but not during player's first touch
-				const isFirstTouch = this.time.now - this.possessionStartTime < 200;
-				if (isFirstTouch) return; // Protected during first touch
-
-				const dist = Phaser.Math.Distance.Between(
-					(player as PlayerSprite).x,
-					(player as PlayerSprite).y,
-					this.ball.x,
-					this.ball.y
-				);
-				if (dist < 20 && Math.random() < 0.2) {
-					this.ballCarrier = player as PlayerSprite;
-					this.lastKicker = 'ai';
-					this.possessionStartTime = this.time.now;
-				}
 			}
 		});
 
@@ -588,6 +583,61 @@ export class MainScene extends Phaser.Scene {
 		}
 	}
 
+	/**
+	 * Attempt a tackle: tackler tries to steal the ball from the current carrier.
+	 * Returns true if a tackle attempt was made (regardless of success).
+	 * On success: possession transfers, ball is knocked toward the tackler, sound + stat.
+	 * Both success and failure start a per-tackler cooldown.
+	 */
+	private attemptTackle(tackler: PlayerSprite, successChance: number): boolean {
+		// No tackling while paused (goal/halftime/fulltime)
+		if (this.isPaused) return false;
+
+		const carrier = this.ballCarrier;
+		// Can only tackle an opponent who actually has the ball
+		if (!carrier || carrier === tackler || carrier.isAI === tackler.isAI) return false;
+
+		// Respect per-tackler cooldown
+		const lastAttempt = this.lastTackleTime.get(tackler) ?? -Infinity;
+		if (this.time.now - lastAttempt < this.TACKLE_COOLDOWN) return false;
+
+		// Carrier is protected during their first touch
+		if (this.time.now - this.possessionStartTime < this.TACKLE_PROTECT_TIME) return false;
+
+		// Must be within tackle range of the carrier
+		const dist = Phaser.Math.Distance.Between(tackler.x, tackler.y, carrier.x, carrier.y);
+		if (dist > this.TACKLE_RADIUS) return false;
+
+		// Commit the attempt - start cooldown regardless of outcome
+		this.lastTackleTime.set(tackler, this.time.now);
+
+		if (Math.random() >= successChance) return true; // Failed tackle (attempt still made)
+
+		// Successful steal - transfer possession to the tackler
+		this.ballCarrier = tackler;
+		this.lastKicker = tackler.isAI ? 'ai' : 'player';
+		this.possessionStartTime = this.time.now;
+
+		// Knock the ball slightly toward the tackler
+		const knockAngle = Phaser.Math.Angle.Between(carrier.x, carrier.y, tackler.x, tackler.y);
+		this.ball.setVelocity(Math.cos(knockAngle) * 80, Math.sin(knockAngle) * 80);
+
+		if (tackler.isAI) {
+			this.stats.aiTackles++;
+		} else {
+			this.stats.playerTackles++;
+			// Human steal: face the AI goal and auto-select the tackler
+			this.dribbleAngle = Math.PI;
+			if (tackler !== this.selectedPlayer) {
+				this.selectedPlayer = tackler;
+				this.highlightSelectedPlayer();
+			}
+		}
+
+		playPassSound();
+		return true;
+	}
+
 	private kickBall() {
 		if (!this.selectedPlayer) return;
 
@@ -603,25 +653,13 @@ export class MainScene extends Phaser.Scene {
 		// First touch delay - can't kick immediately after receiving ball (150ms)
 		if (hasBall && this.time.now - this.possessionStartTime < 150) return;
 
-		// TACKLE: If AI has the ball and we're close, attempt to steal
-		if (!hasBall && this.ballCarrier?.isAI && distance < 50) {
-			this.lastKickTime = this.time.now;
-			// 50% tackle success rate
-			if (Math.random() < 0.5) {
-				// Successful tackle!
-				this.ballCarrier = player;
-				this.lastKicker = 'player';
-				// Reset dribble angle to face the AI goal
-				this.dribbleAngle = Math.PI;
-				// Visual feedback
-				this.cameras.main.shake(100, 0.005);
-				player.setTint(0x00ff00);
+		// TACKLE: If an opponent has the ball and we're close, the action key becomes a steal attempt
+		if (!hasBall && this.ballCarrier?.isAI) {
+			if (this.attemptTackle(player, this.PLAYER_TACKLE_CHANCE)) {
+				// Visual feedback for a committed tackle attempt
+				this.cameras.main.shake(100, 0.004);
+				player.setTint(this.ballCarrier === player ? 0x00ff00 : 0xff8800);
 				this.time.delayedCall(150, () => player.clearTint());
-			} else {
-				// Failed tackle - ball knocked loose
-				this.ballCarrier = null;
-				const knockAngle = Math.random() * Math.PI * 2;
-				ball.setVelocity(Math.cos(knockAngle) * 150, Math.sin(knockAngle) * 150);
 			}
 			return;
 		}
@@ -1091,6 +1129,20 @@ export class MainScene extends Phaser.Scene {
 					}
 				}
 				return;
+			}
+
+			// AI tackle: an aggressive striker near the human carrier tries to steal.
+			// Per-frame chance scales with difficulty (aiAggression) so harder AI steals more.
+			if (playerHasBall && this.ballCarrier) {
+				const distToCarrier = Phaser.Math.Distance.Between(
+					ai.x, ai.y, this.ballCarrier.x, this.ballCarrier.y
+				);
+				if (distToCarrier <= this.TACKLE_RADIUS) {
+					const perFrameChance = 0.03 * this.aiAggression; // ~0.006-0.018/frame by difficulty
+					if (Math.random() < perFrameChance) {
+						this.attemptTackle(ai, 1); // range/cooldown/protect already gated above
+					}
+				}
 			}
 
 			// AI doesn't have ball - chase it or position
