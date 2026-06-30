@@ -2,11 +2,11 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import Anthropic from '@anthropic-ai/sdk';
 import type { Player, SpriteConfig } from '$lib/types/database';
-import { ANTHROPIC_API_KEY } from '$env/static/private';
+import { env as privateEnv } from '$env/dynamic/private';
 import { supabaseAdmin } from '$lib/server/supabase';
 
 const anthropic = new Anthropic({
-	apiKey: ANTHROPIC_API_KEY
+	apiKey: privateEnv.ANTHROPIC_API_KEY ?? ''
 });
 
 // Available sprite options for the modular system

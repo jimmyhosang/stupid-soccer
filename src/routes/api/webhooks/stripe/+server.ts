@@ -2,11 +2,20 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { supabaseAdmin } from '$lib/server/supabase';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from '$env/static/private';
+import { env as privateEnv } from '$env/dynamic/private';
 
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-	apiVersion: '2025-12-15.clover'
-});
+const STRIPE_SECRET_KEY = privateEnv.STRIPE_SECRET_KEY ?? '';
+const STRIPE_WEBHOOK_SECRET = privateEnv.STRIPE_WEBHOOK_SECRET ?? '';
+
+let _stripe: Stripe | null = null;
+function getStripe(): Stripe {
+	if (!_stripe) {
+		_stripe = new Stripe(STRIPE_SECRET_KEY, {
+			apiVersion: '2025-12-15.clover'
+		});
+	}
+	return _stripe;
+}
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.text();
@@ -19,7 +28,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let event: Stripe.Event;
 
 	try {
-		event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
+		event = getStripe().webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
 	} catch (err) {
 		console.error('Webhook signature verification failed:', err);
 		throw error(400, 'Webhook signature verification failed');
@@ -33,7 +42,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 			if (userId && session.subscription) {
 				// Get subscription details
-				const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
+				const subscription = await getStripe().subscriptions.retrieve(session.subscription as string);
 
 				// Update user's subscription tier
 				await supabaseAdmin
