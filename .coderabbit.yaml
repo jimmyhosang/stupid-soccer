@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+reviews:
+  auto_review:
+    enabled: true
+    # Review draft PRs too.
+    drafts: true
+    # Review bot/GitHub-App-authored PRs (e.g. claude[bot]): keep this empty so
+    # no bot/app author is excluded from automatic reviews.
+    ignore_usernames: []
