@@ -8,9 +8,15 @@
 	// Get data from server load function
 	let { data } = $props();
 
+	// Player augmented with its lineup slot (1-3) when a starter; null otherwise
+	type LineupPlayer = Player & { starter_position: number | null };
+
 	// Reactive state from server data
-	let myPlayers = $state<Player[]>(data.players);
+	let myPlayers = $state<LineupPlayer[]>(data.players as LineupPlayer[]);
 	let coinBalance = $state(data.profile.coins);
+
+	// Which empty slot (1-3) the user is currently filling from the bench chooser
+	let choosingSlot = $state<number | null>(null);
 
 	// Format coins for display
 	function formatCoins(amount: number): string {
@@ -25,67 +31,104 @@
 	const starters = $derived(myPlayers.filter((p) => p.is_starter));
 	const bench = $derived(myPlayers.filter((p) => !p.is_starter));
 
+	// The three lineup slots (positions 1-3), each holding the occupying starter or null
+	const lineupSlots = $derived(
+		[1, 2, 3].map((pos) => starters.find((p) => p.starter_position === pos) ?? null)
+	);
+
 	function selectPlayer(player: Player) {
 		selectedPlayer = selectedPlayer?.id === player.id ? null : player;
 	}
 
-	async function toggleStarter(player: Player) {
+	// Persist a starter into a specific lineup slot (1-3) and update local state.
+	// Shared by the sidebar "Add to Starters" toggle and the empty-slot chooser.
+	async function addStarterAtPosition(player: Player, position: number) {
 		if (!supabase) {
 			alert('Database connection not available');
 			return;
 		}
+
+		const { error } = await supabase
+			.from('squads')
+			.insert({
+				user_id: data.profile.id,
+				player_id: player.id,
+				position
+			});
+
+		if (error) {
+			alert('Failed to add to starters');
+			console.error(error);
+			return;
+		}
+
+		// Update local state
+		const playerIndex = myPlayers.findIndex((p) => p.id === player.id);
+		if (playerIndex !== -1) {
+			myPlayers[playerIndex] = {
+				...myPlayers[playerIndex],
+				is_starter: true,
+				starter_position: position
+			};
+		}
+	}
+
+	// Remove a starter from the squad and update local state.
+	async function removeStarter(player: Player) {
+		if (!supabase) {
+			alert('Database connection not available');
+			return;
+		}
+
+		const { error } = await supabase
+			.from('squads')
+			.delete()
+			.eq('player_id', player.id);
+
+		if (error) {
+			alert('Failed to remove from starters');
+			console.error(error);
+			return;
+		}
+
+		// Update local state
+		const playerIndex = myPlayers.findIndex((p) => p.id === player.id);
+		if (playerIndex !== -1) {
+			myPlayers[playerIndex] = {
+				...myPlayers[playerIndex],
+				is_starter: false,
+				starter_position: null
+			};
+		}
+	}
+
+	// First lineup slot (1-3) not currently occupied, or null if the lineup is full.
+	function nextFreePosition(): number | null {
+		const used = new Set(starters.map((p) => p.starter_position));
+		for (let pos = 1; pos <= 3; pos++) {
+			if (!used.has(pos)) return pos;
+		}
+		return null;
+	}
+
+	async function toggleStarter(player: Player) {
 		if (player.is_starter) {
-			// Remove from starters - delete from squads table
-			const { error } = await supabase
-				.from('squads')
-				.delete()
-				.eq('player_id', player.id);
-
-			if (error) {
-				alert('Failed to remove from starters');
-				console.error(error);
-				return;
-			}
-
-			// Update local state
-			const playerIndex = myPlayers.findIndex((p) => p.id === player.id);
-			if (playerIndex !== -1) {
-				myPlayers[playerIndex] = { ...myPlayers[playerIndex], is_starter: false };
-			}
+			await removeStarter(player);
 		} else {
-			// Add to starters (max 3)
-			if (starters.length >= 3) {
+			const position = nextFreePosition();
+			if (position === null) {
 				alert('You can only have 3 starters! Remove one first.');
 				return;
 			}
-
-			// Find next available position (1, 2, or 3)
-			const usedPositions = new Set(data.squad.map((s: { position: number }) => s.position));
-			let nextPosition = 1;
-			while (usedPositions.has(nextPosition) && nextPosition <= 3) {
-				nextPosition++;
-			}
-
-			const { error } = await supabase!
-				.from('squads')
-				.insert({
-					user_id: data.profile.id,
-					player_id: player.id,
-					position: nextPosition
-				});
-
-			if (error) {
-				alert('Failed to add to starters');
-				console.error(error);
-				return;
-			}
-
-			// Update local state
-			const playerIndex = myPlayers.findIndex((p) => p.id === player.id);
-			if (playerIndex !== -1) {
-				myPlayers[playerIndex] = { ...myPlayers[playerIndex], is_starter: true };
-			}
+			await addStarterAtPosition(player, position);
 		}
+		selectedPlayer = null;
+	}
+
+	// Fill a specific empty lineup slot from the bench chooser.
+	async function assignToSlot(player: Player, position: number) {
+		await addStarterAtPosition(player, position);
+		choosingSlot = null;
 		selectedPlayer = null;
 	}
 
@@ -193,6 +236,17 @@
 			</div>
 		</div>
 
+		{#if myPlayers.length === 0}
+			<!-- Empty squad: user owns no players at all -->
+			<div class="card p-12 text-center">
+				<div class="text-5xl mb-4">⚽</div>
+				<h2 class="font-pixel text-lg text-text-primary mb-2">YOUR SQUAD IS EMPTY</h2>
+				<p class="text-text-secondary mb-6 max-w-md mx-auto">
+					You don't own any players yet. Head to the AI Scout to generate your first players and start building your 3v3 lineup.
+				</p>
+				<a href="/scout" class="btn btn-primary">+ Scout Your First Player</a>
+			</div>
+		{:else}
 		<!-- Tab Navigation -->
 		<div class="tab-nav">
 			<button
@@ -213,28 +267,77 @@
 			<!-- Players Grid -->
 			<div class="lg:col-span-2">
 				{#if activeTab === 'squad'}
-					{#if starters.length === 0}
-						<div class="card p-12 text-center">
-							<p class="text-text-muted mb-4">No starters selected</p>
-							<p class="text-text-secondary text-sm">Click on a player from your bench to add them as a starter</p>
+					<!-- 3v3 Lineup: three labelled starter slots, filled or empty -->
+					<div class="lineup-region">
+						<div class="lineup-header">
+							<h2 class="lineup-title">YOUR LINEUP (3v3)</h2>
+							<span class="lineup-count">{starters.length}/3</span>
 						</div>
-					{:else}
-						<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
-							{#each starters as player}
-								<div class="relative">
-									<div class="absolute -top-2 -right-2 z-10 bg-secondary text-white px-2 py-1 rounded font-pixel text-xs">
-										STARTER
-									</div>
-									<PlayerCard
-										{player}
-										size="md"
-										showStats={true}
-										onClick={() => selectPlayer(player)}
-									/>
+						<div class="lineup-slots">
+							{#each lineupSlots as slotPlayer, i}
+								{@const position = i + 1}
+								<div class="lineup-slot">
+									<div class="slot-label">STARTER {position}</div>
+									{#if slotPlayer}
+										<!-- Filled slot: render the player's card with a bench/remove affordance -->
+										<div class="slot-filled">
+											<PlayerCard
+												player={slotPlayer}
+												size="md"
+												showStats={true}
+												onClick={() => selectPlayer(slotPlayer)}
+											/>
+											<button
+												type="button"
+												class="slot-remove-btn"
+												onclick={() => removeStarter(slotPlayer)}
+											>
+												Bench
+											</button>
+										</div>
+									{:else if choosingSlot === position}
+										<!-- Empty slot in "choose from bench" mode -->
+										<div class="slot-empty slot-choosing">
+											{#if bench.length === 0}
+												<p class="slot-empty-text">No bench players available.</p>
+												<a href="/scout" class="slot-add-btn">Scout players</a>
+											{:else}
+												<p class="slot-empty-text">Choose a player for slot {position}</p>
+												<div class="slot-chooser-list">
+													{#each bench as benchPlayer}
+														<button
+															type="button"
+															class="slot-chooser-item"
+															onclick={() => assignToSlot(benchPlayer, position)}
+														>
+															{benchPlayer.name}
+														</button>
+													{/each}
+												</div>
+											{/if}
+											<button
+												type="button"
+												class="slot-cancel-btn"
+												onclick={() => (choosingSlot = null)}
+											>
+												Cancel
+											</button>
+										</div>
+									{:else}
+										<!-- Empty slot placeholder with add affordance -->
+										<button
+											type="button"
+											class="slot-empty slot-empty-add"
+											onclick={() => (choosingSlot = position)}
+										>
+											<span class="slot-plus">+</span>
+											<span class="slot-empty-text">Add starter</span>
+										</button>
+									{/if}
 								</div>
 							{/each}
 						</div>
-					{/if}
+					</div>
 				{:else}
 					{#if bench.length === 0}
 						<div class="card p-12 text-center">
@@ -436,6 +539,7 @@
 				{/if}
 			</div>
 		</div>
+		{/if}
 	</div>
 </main>
 
@@ -601,5 +705,166 @@
 		.content-grid {
 			grid-template-columns: 2fr 1fr;
 		}
+	}
+
+	/* ---- 3v3 Lineup region ---- */
+	.lineup-region {
+		background-color: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		padding: 1.5rem;
+	}
+
+	.lineup-header {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		margin-bottom: 1.25rem;
+	}
+
+	.lineup-title {
+		font-family: var(--font-pixel);
+		font-size: 1rem;
+		color: var(--color-text-primary);
+	}
+
+	.lineup-count {
+		font-family: var(--font-pixel);
+		font-size: 0.875rem;
+		color: var(--color-accent);
+	}
+
+	.lineup-slots {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 1.25rem;
+	}
+
+	@media (min-width: 640px) {
+		.lineup-slots {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	.lineup-slot {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.slot-label {
+		font-family: var(--font-pixel);
+		font-size: 0.7rem;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+	}
+
+	.slot-filled {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.slot-remove-btn {
+		padding: 0.35rem 1rem;
+		border-radius: 0.5rem;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+		background-color: var(--color-secondary);
+		color: white;
+		border: none;
+		transition: opacity 0.2s;
+	}
+
+	.slot-remove-btn:hover {
+		opacity: 0.85;
+	}
+
+	/* Empty-slot placeholder: dashed outline card matching md PlayerCard footprint (w-48 h-64) */
+	.slot-empty {
+		width: 12rem;
+		height: 16rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 1rem;
+		border-radius: 0.75rem;
+		border: 2px dashed var(--color-border);
+		background-color: rgba(0, 0, 0, 0.2);
+		color: var(--color-text-muted);
+		text-align: center;
+	}
+
+	.slot-empty-add {
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.slot-empty-add:hover {
+		border-color: var(--color-primary);
+		color: var(--color-text-primary);
+		background-color: rgba(0, 0, 0, 0.3);
+	}
+
+	.slot-plus {
+		font-family: var(--font-pixel);
+		font-size: 2.5rem;
+		line-height: 1;
+		color: var(--color-primary);
+	}
+
+	.slot-empty-text {
+		font-size: 0.8rem;
+	}
+
+	.slot-choosing {
+		justify-content: flex-start;
+		overflow-y: auto;
+	}
+
+	.slot-chooser-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		width: 100%;
+		margin: 0.5rem 0;
+	}
+
+	.slot-chooser-item {
+		padding: 0.4rem 0.5rem;
+		border-radius: 0.4rem;
+		font-size: 0.8rem;
+		cursor: pointer;
+		background-color: var(--color-surface-hover, rgba(255, 255, 255, 0.05));
+		color: var(--color-text-primary);
+		border: 1px solid var(--color-border);
+		transition: background-color 0.2s;
+	}
+
+	.slot-chooser-item:hover {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.slot-add-btn,
+	.slot-cancel-btn {
+		padding: 0.35rem 1rem;
+		border-radius: 0.5rem;
+		font-size: 0.8rem;
+		cursor: pointer;
+		text-decoration: none;
+		border: 1px solid var(--color-border);
+		background-color: var(--color-surface);
+		color: var(--color-text-secondary);
+	}
+
+	.slot-cancel-btn:hover,
+	.slot-add-btn:hover {
+		color: var(--color-text-primary);
 	}
 </style>
