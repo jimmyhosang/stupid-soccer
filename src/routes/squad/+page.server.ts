@@ -53,11 +53,14 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 		.select('player_id, position')
 		.eq('user_id', userId);
 
-	// Mark starters based on squad data
-	const squadPlayerIds = new Set(squad?.map((s) => s.player_id) || []);
+	// Mark starters based on squad data, and expose each starter's lineup position (1-3)
+	const positionByPlayerId = new Map<string, number>(
+		(squad || []).map((s) => [s.player_id, s.position])
+	);
 	const playersWithStarters = (players || []).map((player) => ({
 		...player,
-		is_starter: squadPlayerIds.has(player.id)
+		is_starter: positionByPlayerId.has(player.id),
+		starter_position: positionByPlayerId.get(player.id) ?? null
 	}));
 
 	return {
