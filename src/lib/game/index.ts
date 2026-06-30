@@ -8,7 +8,19 @@ export interface GameConfig {
 	difficulty?: 'easy' | 'medium' | 'hard';
 	onGoal?: (scorer: 'player' | 'ai') => void;
 	onTimeUpdate?: (time: number) => void;
-	onGameEnd?: (result: { playerScore: number; aiScore: number }) => void;
+	onGameEnd?: (result: {
+		playerScore: number;
+		aiScore: number;
+		stats?: {
+			playerShots: number;
+			aiShots: number;
+			playerPossessionFrames: number;
+			aiPossessionFrames: number;
+			playerPasses: number;
+			aiPasses: number;
+		};
+		possession?: { player: number; ai: number };
+	}) => void;
 }
 
 export function createGame(config: GameConfig): Phaser.Game {
