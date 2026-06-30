@@ -69,6 +69,9 @@ export class MainScene extends Phaser.Scene {
 	private overlayStats!: Phaser.GameObjects.Text;
 	private overlayPrompt!: Phaser.GameObjects.Text;
 
+	// Goal celebration objects (cleaned up before resetPositions)
+	private celebrationObjects: Phaser.GameObjects.GameObject[] = [];
+
 	// Difficulty settings (set from registry)
 	private aiSpeed = 100;
 	private aiAggression = 0.3; // How likely AI is to attack
@@ -915,13 +918,83 @@ export class MainScene extends Phaser.Scene {
 			}
 		});
 
+		// Extra celebration overlay (banner bounce, scorer line, confetti)
+		this.showGoalCelebration(scorer);
+
 		// Pause then reset
 		this.ballCarrier = null;
 		this.time.delayedCall(1500, () => {
 			this.isPaused = false;
 			this.goalJustScored = false; // Allow goal detection again
+			this.clearCelebration();
 			this.resetPositions();
 		});
+	}
+
+	private showGoalCelebration(scorer: 'player' | 'ai') {
+		const { width, height } = this.scale;
+		const teamColor = scorer === 'player' ? PLAYER_COLOR : AI_COLOR;
+
+		// Scorer line under the banner. No player-name data exists in the game
+		// (sprites are identified only by team + index), so use a team label
+		// derived from the scoring side rather than inventing a name.
+		const scorerLine =
+			scorer === 'player' ? 'YOU SCORED!' : 'GOOOAL!';
+
+		const scorerText = this.add.text(width / 2, height / 2 + 50, scorerLine, {
+			fontFamily: '"Press Start 2P"',
+			fontSize: '16px',
+			color: '#ffffff',
+			stroke: '#000000',
+			strokeThickness: 4
+		}).setOrigin(0.5).setDepth(100).setAlpha(0).setScale(0.6);
+		this.celebrationObjects.push(scorerText);
+
+		// Pop the scorer line in with a slight bounce, slightly after the banner
+		this.tweens.add({
+			targets: scorerText,
+			alpha: 1,
+			scale: 1,
+			duration: 250,
+			delay: 120,
+			ease: 'Back.out'
+		});
+
+		// Confetti burst in the scoring team's color
+		this.spawnConfetti(width / 2, height / 2, teamColor);
+	}
+
+	private spawnConfetti(originX: number, originY: number, color: number) {
+		const pieceCount = 28;
+
+		for (let i = 0; i < pieceCount; i++) {
+			const size = Phaser.Math.Between(4, 8);
+			const piece = this.add.rectangle(originX, originY, size, size, color);
+			piece.setDepth(99);
+			piece.setAngle(Phaser.Math.Between(0, 360));
+			this.celebrationObjects.push(piece);
+
+			// Burst outward in a random direction, fade and spin as it travels
+			const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+			const distance = Phaser.Math.Between(120, 320);
+			this.tweens.add({
+				targets: piece,
+				x: originX + Math.cos(angle) * distance,
+				y: originY + Math.sin(angle) * distance,
+				angle: piece.angle + Phaser.Math.Between(180, 540),
+				alpha: 0,
+				duration: Phaser.Math.Between(700, 1100),
+				ease: 'Quad.out'
+			});
+		}
+	}
+
+	private clearCelebration() {
+		this.celebrationObjects.forEach((obj) => {
+			this.tweens.killTweensOf(obj);
+			obj.destroy();
+		});
+		this.celebrationObjects = [];
 	}
 
 	private resetPositions() {
